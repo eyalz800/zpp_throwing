@@ -910,35 +910,29 @@ public:
     throwing & operator=(const throwing & other) = delete;
 
     /**
-     * Await is always not ready,
+     * Await is ready if there is no exception.
      */
-    constexpr bool await_ready() noexcept
+    bool await_ready() noexcept
     {
-        return false;
+        return static_cast<bool>(m_handle.promise());
     }
 
     /**
      * Suspend execution only if there is an exception to be thrown.
      */
     template <typename PromiseType>
-    bool await_suspend(coroutine_handle<PromiseType> outer_handle) noexcept
+    void await_suspend(coroutine_handle<PromiseType> outer_handle) noexcept
     {
-        auto & promise = m_handle.promise();
-        if (!promise) {
-            auto & value = promise.value();
-            auto & outer_promise = outer_handle.promise();
+        auto & value = m_handle.promise().value();
+        auto & outer_promise = outer_handle.promise();
 
-            if (!value.is_rethrow()) {
-                // Throw.
-                outer_promise.value().propagate_exception(value);
-            } else if (outer_promise) {
-                // Rethrow.
-                outer_promise.value().rethrow();
-            }
-
-            return true;
+        if (!value.is_rethrow()) {
+            // Throw.
+            outer_promise.value().propagate_exception(value);
+        } else if (outer_promise) {
+            // Rethrow.
+            outer_promise.value().rethrow();
         }
-        return false;
     }
 
     /**
