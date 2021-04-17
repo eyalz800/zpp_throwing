@@ -607,7 +607,7 @@ public:
          * Returns the stored value, the behavior
          * is undefined if there is an exception stored.
          */
-        auto && value() && noexcept
+        decltype(auto) value() && noexcept
         {
             if constexpr (std::is_void_v<Type>) {
                 return;
@@ -620,7 +620,7 @@ public:
          * Returns the stored value, the behavior
          * is undefined if there is an exception stored.
          */
-        auto & value() & noexcept
+        decltype(auto) value() & noexcept
         {
             if constexpr (std::is_void_v<Type>) {
                 return;
