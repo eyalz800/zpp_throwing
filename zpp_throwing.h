@@ -510,11 +510,6 @@ public:
             std::terminate();
         }
 
-        void rethrow_if_unhandled_exception()
-        {
-            std::terminate();
-        }
-
     protected:
         auto & value() noexcept
         {
