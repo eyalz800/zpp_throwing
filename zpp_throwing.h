@@ -547,8 +547,7 @@ public:
 
         auto get_return_object()
         {
-            return throwing<Type>(
-                coroutine_handle<promise_type>::from_promise(*this));
+            return throwing{coroutine_handle<promise_type>::from_promise(*this)};
         }
     };
 
@@ -568,8 +567,7 @@ public:
 
         auto get_return_object()
         {
-            return throwing<Type>(
-                coroutine_handle<promise_type>::from_promise(*this));
+            return throwing{coroutine_handle<promise_type>::from_promise(*this)};
         }
     };
 
@@ -898,7 +896,7 @@ public:
     /**
      * Construct from the coroutine handle.
      */
-    throwing(coroutine_handle<promise_type> handle) noexcept :
+    explicit throwing(coroutine_handle<promise_type> handle) noexcept :
         m_handle(std::move(handle))
     {
     }
