@@ -402,7 +402,7 @@ class throwing
             is_exception = true;
         }
 
-        explicit operator bool() const
+        explicit operator bool() const noexcept
         {
             return !is_exception;
         }
