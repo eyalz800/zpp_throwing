@@ -429,7 +429,7 @@ public:
 
         auto initial_suspend() noexcept
         {
-            return suspend_never{};
+            return suspend_always{};
         }
 
         auto final_suspend() noexcept
@@ -914,6 +914,7 @@ public:
      */
     bool await_ready() noexcept
     {
+        m_handle.resume();
         return static_cast<bool>(m_handle.promise());
     }
 
@@ -948,10 +949,11 @@ public:
     }
 
     /**
-     * Construct and return the promised value.
+     * Call the function and return the promised object.
      */
-    auto result() noexcept
+    auto call() noexcept
     {
+        m_handle.resume();
         return promised(std::move(m_handle.promise().value()));
     }
 
@@ -982,7 +984,7 @@ auto try_catch(Clause && clause)
                       &decltype(std::forward<Clause>(
                           clause)())::promise_type::get_return_object;
                   }) {
-        return std::forward<Clause>(clause)().result();
+        return std::forward<Clause>(clause)().call();
     } else {
         static_assert(std::is_void_v<Clause>,
                       "try_catch clause must be a coroutine.");
