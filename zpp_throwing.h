@@ -693,7 +693,7 @@ public:
                     std::get<sizeof...(Clauses)>(
                         std::declval<std::tuple<Clause, Clauses...>>()))>;
             })
-                throwing<Type> catches_object(
+                throwing<Type> catch_exception_object(
                     const struct exception_object::dynamic_object &
                         exception,
                     Clause && clause,
@@ -719,17 +719,17 @@ public:
                 if (!catch_object) {
                     if constexpr (0 != sizeof...(Clauses)) {
                         if constexpr (requires {
-                                          typename decltype(catches_object(
+                                          typename decltype(catch_exception_object(
                                               exception,
                                               std::forward<Clauses>(
                                                   clauses)...))::
                                               zpp_throwing_tag;
                                       }) {
-                            co_return co_await catches_object(
+                            co_return co_await catch_exception_object(
                                 exception,
                                 std::forward<Clauses>(clauses)...);
                         } else {
-                            co_return catches_object(
+                            co_return catch_exception_object(
                                 exception,
                                 std::forward<Clauses>(clauses)...);
                         }
@@ -796,7 +796,7 @@ public:
                         std::get<sizeof...(Clauses)>(
                             std::declval<
                                 std::tuple<Clause, Clauses...>>()))>;
-                }))) auto catches_object(const struct exception_object::
+                }))) auto catch_exception_object(const struct exception_object::
                                              dynamic_object & exception,
                                          Clause && clause,
                                          Clauses &&... clauses)
@@ -816,7 +816,7 @@ public:
                     static_assert(0 != sizeof...(Clauses),
                                   "Missing catch all block in non "
                                   "throwing catches.");
-                    return catches_object(
+                    return catch_exception_object(
                         exception, std::forward<Clauses>(clauses)...);
                 }
 
@@ -837,7 +837,7 @@ public:
         template <typename... Clauses>
         throwing<Type> catches(Clauses &&... clauses) requires requires
         {
-            typename decltype(this->catches_object(
+            typename decltype(this->catch_exception_object(
                 this->exception().dynamic_object(),
                 std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
         }
@@ -852,7 +852,7 @@ public:
             }
 
             // Follow to catch the exception.
-            co_return co_await catches_object(
+            co_return co_await catch_exception_object(
                 exception().dynamic_object(),
                 std::forward<Clauses>(clauses)...);
         }
@@ -868,7 +868,7 @@ public:
          */
         template <typename... Clauses>
         Type catches(Clauses &&... clauses) requires(!requires {
-            typename decltype(this->catches_object(
+            typename decltype(this->catch_exception_object(
                 this->exception().dynamic_object(),
                 std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
         })
@@ -883,7 +883,7 @@ public:
             }
 
             // Follow to catch the exception.
-            return catches_object(exception().dynamic_object(),
+            return catch_exception_object(exception().dynamic_object(),
                                   std::forward<Clauses>(clauses)...);
         }
     };
