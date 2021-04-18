@@ -933,10 +933,6 @@ public:
             // Rethrow.
             outer_promise.value().rethrow();
         }
-
-        // Invoke destructors by destroying the coroutine.
-        m_handle.destroy();
-        m_handle = {};
     }
 
     /**
