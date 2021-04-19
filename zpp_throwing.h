@@ -372,6 +372,7 @@ public:
         using base = std::conditional_t<std::is_void_v<Type>,
                                         void_value,
                                         nonvoid_value<value_type>>;
+
     public:
         auto & exception()
         {
@@ -390,8 +391,8 @@ public:
 
         void rethrow()
         {
+            base::m_exception = {};
             is_exception = true;
-            base::m_exception = nullptr;
         }
 
         void set_exception(auto && value)
@@ -545,7 +546,8 @@ public:
 
         auto get_return_object()
         {
-            return throwing{coroutine_handle<promise_type>::from_promise(*this)};
+            return throwing{
+                coroutine_handle<promise_type>::from_promise(*this)};
         }
     };
 
@@ -565,7 +567,8 @@ public:
 
         auto get_return_object()
         {
-            return throwing{coroutine_handle<promise_type>::from_promise(*this)};
+            return throwing{
+                coroutine_handle<promise_type>::from_promise(*this)};
         }
     };
 
@@ -722,10 +725,11 @@ public:
                 if (!catch_object) {
                     if constexpr (0 != sizeof...(Clauses)) {
                         if constexpr (requires {
-                                          typename decltype(catch_exception_object(
-                                              exception,
-                                              std::forward<Clauses>(
-                                                  clauses)...))::
+                                          typename decltype(
+                                              catch_exception_object(
+                                                  exception,
+                                                  std::forward<Clauses>(
+                                                      clauses)...))::
                                               zpp_throwing_tag;
                                       }) {
                             co_return co_await catch_exception_object(
@@ -799,10 +803,12 @@ public:
                         std::get<sizeof...(Clauses)>(
                             std::declval<
                                 std::tuple<Clause, Clauses...>>()))>;
-                }))) auto catch_exception_object(const struct exception_object::
-                                             dynamic_object & exception,
-                                         Clause && clause,
-                                         Clauses &&... clauses)
+                }))) auto catch_exception_object(const struct
+                                                 exception_object::
+                                                     dynamic_object &
+                                                         exception,
+                                                 Clause && clause,
+                                                 Clauses &&... clauses)
         {
             if constexpr (std::is_void_v<CatchType>) {
                 static_assert(!sizeof...(Clauses),
@@ -846,7 +852,7 @@ public:
         }
         {
             // If there is no exception, skip.
-            if (*this) {
+            if (m_value) {
                 if constexpr (std::is_void_v<Type>) {
                     co_return;
                 } else {
@@ -877,7 +883,7 @@ public:
         })
         {
             // If there is no exception, skip.
-            if (*this) {
+            if (m_value) {
                 if constexpr (std::is_void_v<Type>) {
                     return;
                 } else {
@@ -886,8 +892,9 @@ public:
             }
 
             // Follow to catch the exception.
-            return catch_exception_object(exception().dynamic_object(),
-                                  std::forward<Clauses>(clauses)...);
+            return catch_exception_object(
+                exception().dynamic_object(),
+                std::forward<Clauses>(clauses)...);
         }
     };
 
@@ -915,7 +922,7 @@ public:
     /**
      * Await is ready if there is no exception.
      */
-    bool await_ready() noexcept
+    bool await_ready()
     {
         m_handle.resume();
         return static_cast<bool>(m_handle.promise());
@@ -954,7 +961,7 @@ public:
     /**
      * Call the function and return the promised object.
      */
-    auto call() noexcept
+    auto call()
     {
         m_handle.resume();
         return promised(std::move(m_handle.promise().value()));
@@ -983,9 +990,9 @@ private:
 template <typename Clause>
 auto try_catch(Clause && clause)
 {
-    if constexpr (requires(Clause && block) {
-                      &decltype(std::forward<Clause>(
-                          clause)())::promise_type::get_return_object;
+    if constexpr (requires {
+                      typename std::invoke_result_t<
+                          Clause>::zpp_throwing_tag;
                   }) {
         return std::forward<Clause>(clause)().call();
     } else {
