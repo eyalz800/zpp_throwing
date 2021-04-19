@@ -314,13 +314,15 @@ using catch_value_type_t = typename catch_value_type<Type>::type;
 template <typename Type>
 class throwing
 {
-    struct empty_value
+private:
+    struct void_value
     {
-        ~empty_value() = default;
+    protected:
+        std::unique_ptr<exception_object> m_exception;
     };
 
     template <typename Derived>
-    struct real_value
+    struct nonvoid_value
     {
     public:
         decltype(auto) value()
@@ -347,58 +349,60 @@ class throwing
             static_cast<Derived &>(*this).is_exception = false;
         }
 
-    protected:
-        ~real_value() = default;
-
         using stored_type = std::conditional_t<
             std::is_trivially_constructible_v<Type> &&
                 std::is_nothrow_move_constructible_v<Type>,
             Type,
             std::optional<Type>>;
 
+    protected:
+        std::unique_ptr<exception_object> m_exception;
         stored_type m_value;
     };
 
+public:
     /**
      * The promise stored value.
      */
     class value_type : public std::conditional_t<std::is_void_v<Type>,
-                                                 empty_value,
-                                                 real_value<value_type>>
+                                                 void_value,
+                                                 nonvoid_value<value_type>>
     {
-        friend real_value<value_type>;
-
+        friend nonvoid_value<value_type>;
+        using base = std::conditional_t<std::is_void_v<Type>,
+                                        void_value,
+                                        nonvoid_value<value_type>>;
     public:
         auto & exception()
         {
-            return *m_exception;
+            return *base::m_exception;
         }
 
         auto && get_exception_ptr()
         {
-            return std::move(m_exception);
+            return std::move(base::m_exception);
         }
 
         auto is_rethrow() const
         {
-            return is_exception && !m_exception;
+            return is_exception && !base::m_exception;
         }
 
         void rethrow()
         {
             is_exception = true;
-            m_exception = nullptr;
+            base::m_exception = nullptr;
         }
 
         void set_exception(auto && value)
         {
-            m_exception = std::forward<decltype(value)>(value);
+            base::m_exception = std::forward<decltype(value)>(value);
             is_exception = true;
         }
 
         void propagate_exception(auto && value)
         {
-            m_exception = value.get_exception_ptr();
+            base::m_exception = value.get_exception_ptr();
             is_exception = true;
         }
 
@@ -408,7 +412,6 @@ class throwing
         }
 
     private:
-        std::unique_ptr<exception_object> m_exception;
         bool is_exception{};
     };
 
