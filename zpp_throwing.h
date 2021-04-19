@@ -844,7 +844,8 @@ public:
          * for catch clauses that may themselves throw.
          */
         template <typename... Clauses>
-        throwing<Type> catches(Clauses &&... clauses) requires requires
+        inline throwing<Type>
+        catches(Clauses &&... clauses) requires requires
         {
             typename decltype(this->catch_exception_object(
                 this->exception().dynamic_object(),
@@ -876,7 +877,7 @@ public:
          * for catch clauses that do not throw.
          */
         template <typename... Clauses>
-        Type catches(Clauses &&... clauses) requires(!requires {
+        inline Type catches(Clauses &&... clauses) requires(!requires {
             typename decltype(this->catch_exception_object(
                 this->exception().dynamic_object(),
                 std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
