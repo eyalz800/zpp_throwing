@@ -172,6 +172,50 @@ zpp::throwing<int> foo(bool success)
 }
 ```
 
+### Throwing Values (Inspired by P0709)
+```cpp
+int main()
+{
+    zpp::try_catch([]() -> zpp::throwing<void> {
+        // Throws an exception.
+        co_yield std::errc::invalid_argument;
+    }).catches([](zpp::error error) {
+        std::cout << "Error: " << error.code() <<
+            " [" << error.domain().name() << "]: " << error.message() << '\n';
+    }, [](){
+        /* catch all */
+    });
+}
+```
+In the `main` function above an error value is thrown, from a predefined error
+domain of `std::errc`.
+
+In order to define your own error domains, the following example is provided:
+```cpp
+enum class my_error
+{
+    success = 0,
+    operation_not_permitted = 1,
+    general_failure = 2,
+};
+
+template <>
+inline constexpr auto zpp::err_domain<my_error> = zpp::make_error_domain(
+        "my_error", my_error::success, [](auto code) constexpr->std::string_view {
+    switch (code) {
+    case my_error::operation_not_permitted:
+        return "Operation not permitted.";
+    case my_error::general_failure:
+        return "General failure.";
+    default:
+        return "Unspecified error.";
+    }
+});
+```
+
+Error values of the enum shall not exceed the maximum value of `254`, see the limitations and caveats section
+for details.
+
 ### Fully-Working Example
 As a final example, here is a full program to play with:
 ```cpp
@@ -228,15 +272,20 @@ int main()
 }
 ```
 
-Limitations
------------
+Limitations / Caveats
+---------------------
 1. The code currently assumes that no exceptions can ever be thrown and as such
 it is not recommended to use it in a project where exceptions are enabled.
 2. Because coroutines cannot work with constructors, it means that an exception
 cannot propagate from constructors natively, and it needs to be worked around, through a parameter
 to the constructor or other means such as factory functions.
-3. The code has gone only through very minimal testing, with recent clang compiler.
-4. The code requires `C++20` and above.
+3. Throwing values only supports error values between 0 and 254 (`throwing<T>::error_code_max`). The reason for
+that is to try and keep `sizeof(zpp::throwing<void *>::promise_tyoe) == 2 * sizeof(void *)` 
+(i.e, the promise type for a return value of pointer size, is twice the size of pointer) The feature that
+is being used for that will also create a global const variable of size 256 bytes. For
+more info about this hack see `zpp::detail::reserved_ptr`.
+4. The code has gone only through very minimal testing, with recent clang compiler.
+5. The code requires `C++20` and above.
 
 Final Word
 ----------
