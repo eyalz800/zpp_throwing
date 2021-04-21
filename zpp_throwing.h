@@ -841,9 +841,6 @@ public:
     };
 };
 
-template <typename Type>
-class result;
-
 /**
  * Use as the return type of the function, throw exceptions
  * by using `co_yield`, call throwing functions by `co_await`, and
@@ -855,6 +852,9 @@ class result;
 template <typename Type>
 class throwing
 {
+    template <typename>
+    friend class result;
+
 public:
     struct zpp_throwing_tag
     {
@@ -1087,15 +1087,6 @@ public:
     }
 
     /**
-     * Call the function and return the result object.
-     */
-    [[nodiscard]] auto operator*() &&
-    {
-        m_handle.resume();
-        return result(std::move(m_handle.promise().value()));
-    }
-
-    /**
      * Destroy the coroutine handle.
      */
     ~throwing()
@@ -1106,6 +1097,15 @@ public:
     }
 
 private:
+    /**
+     * Call the function and return the promised value.
+     */
+    auto invoke()
+    {
+        m_handle.resume();
+        return std::move(m_handle.promise().value());
+    }
+
     coroutine_handle<promise_type> m_handle;
 };
 
@@ -1120,6 +1120,14 @@ class result
 public:
     template <typename>
     friend class throwing;
+
+    /**
+     * Create the result from the throwing object.
+     */
+    result(throwing<Type> throwing) noexcept :
+        m_value(throwing.invoke())
+    {
+    }
 
     /**
      * Returns true if value is stored, otherwise, an
@@ -1169,14 +1177,6 @@ public:
     }
 
 private:
-    /**
-     * Create the promise from the value type.
-     */
-    explicit result(promised_value<Type> && value) noexcept :
-        m_value(std::move(value))
-    {
-    }
-
     /**
      * Allows to catch exceptions. Each parameter is a catch clause
      * that receives one parameter of the exception to be caught. A
@@ -1483,7 +1483,7 @@ auto try_catch(Clause && clause)
                       typename std::invoke_result_t<
                           Clause>::zpp_throwing_tag;
                   }) {
-        return *std::forward<Clause>(clause)();
+        return result(std::forward<Clause>(clause)());
     } else {
         static_assert(std::is_void_v<Clause>,
                       "try_catch clause must be a coroutine.");

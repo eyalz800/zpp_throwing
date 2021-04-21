@@ -231,8 +231,8 @@ static zpp::throwing<int> a_foo_impl()
 
 zpp::result<int> a_foo()
 {
-    // Gets the result value
-    return *a_foo_impl();
+    // Implicitly converted to zpp::result.
+    return a_foo_impl();
 }
 
 // main.cpp
@@ -256,7 +256,7 @@ Similarily, we could avoid declaring `a_foo_impl` and do the following:
 ```cpp
 zpp::result<int> a_foo()
 {
-    return *[&]() -> zpp::throwing<int> {
+    return [&]() -> zpp::throwing<int> {
         co_yield std::errc::address_in_use;
         co_return 0;
     }();
