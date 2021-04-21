@@ -216,6 +216,58 @@ inline constexpr auto zpp::err_domain<my_error> = zpp::make_error_domain(
 Error values of the enum shall not exceed the maximum value of `254`, see the limitations and caveats section
 for details.
 
+### Optimize Calls Between Translation Units
+Currently for HALO optimization to work, the ramp function of the coroutine needs to be
+accessible to inline for the compiler. It means that between different translation units
+the coroutines may have to allocate memory for the state object. To overcome this, it is possible
+to use `zpp::promised<Type>`, in the following way:
+```cpp
+// a.cpp
+static zpp::throwing<int> a_foo_impl()
+{
+    co_yield std::errc::address_in_use;
+    co_return 0;
+}
+
+zpp::promised<int> a_foo()
+{
+    // Gets the promised value
+    return *a_foo_impl();
+}
+
+// main.cpp
+int main()
+{
+    return zpp::try_catch([]() -> zpp::throwing<int> {
+        // Awaiting the promised type.
+        std::cout << co_await a_foo() << '\n';
+    }).catches([](zpp::error error) {
+        std::cout << "Error: " << error.code() <<
+            " [" << error.domain().name() << "]: " << error.message() << '\n';
+        return 1;
+    }, [&]() {
+        std::cout << "Unknown exception\n";
+        return 1;
+    });
+}
+```
+
+Similarily, we could avoid declaring `a_foo_impl` and do the following:
+```cpp
+zpp::promised<int> a_foo()
+{
+    return *[&]() -> zpp::throwing<int> {
+        co_yield std::errc::address_in_use;
+        co_return 0;
+    }();
+}
+```
+
+The `operator*` of `zpp::throwing` returns the stored promised value. Merely returning
+this value makes `a_foo` a normal function, and as such does not require allocation of the
+coroutine state object. `zpp::promised<Type>` exposes `operator co_await` to be able to get the
+value or throw if there is a stored exception/error within.
+
 ### Fully-Working Example
 As a final example, here is a full program to play with:
 ```cpp

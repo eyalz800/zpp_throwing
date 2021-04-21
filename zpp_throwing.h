@@ -689,6 +689,162 @@ using catch_value_type_t = typename catch_value_type<Type>::type;
 } // namespace detail
 
 /**
+ * Maximum value of an error code.
+ */
+static constexpr auto error_code_max = 255 - 1 /* reserved */;
+
+/**
+ * The promise stored value.
+ */
+template <typename Type>
+class promised_value
+{
+public:
+    promised_value() : m_error_domain()
+    {
+    }
+
+    promised_value(promised_value && other) noexcept :
+        m_error_state(std::move(other.m_error_state))
+    {
+        if (m_error_state == value_index) {
+            if constexpr (!std::is_void_v<Type>) {
+                ::new (&m_value) Type(std::move(other.m_value));
+                if constexpr (!std::is_trivially_destructible_v<Type>) {
+                    other.m_value.~Type();
+                }
+            }
+        } else if (m_error_state.reserved()) {
+            m_error_domain = other.m_error_domain;
+        }
+    }
+
+    ~promised_value()
+    {
+        if (m_error_state == value_index) {
+            if constexpr (!std::is_void_v<Type> &&
+                          !std::is_trivially_destructible_v<Type>) {
+                m_value.~Type();
+            }
+        }
+    }
+
+    promised_value(const promised_value &) = delete;
+    promised_value & operator=(promised_value &&) = delete;
+    promised_value & operator=(const promised_value &) = delete;
+
+    explicit operator bool() const noexcept
+    {
+        return m_error_state == value_index;
+    }
+
+    bool has_exception() const noexcept
+    {
+        return static_cast<bool>(m_error_state);
+    }
+
+    bool has_error() const noexcept
+    {
+        return m_error_state.reserved() && m_error_state != value_index;
+    }
+
+    decltype(auto) value()
+    {
+        if constexpr (std::is_same_v<Type, decltype(m_value)>) {
+            return (m_value);
+        } else {
+            return (*m_value);
+        }
+    }
+
+    /**
+     * Sets a value. `this` should not hold a value.
+     */
+    template <typename..., typename Dependent = Type>
+    void set_value(auto && other) requires(!std::is_void_v<Dependent>)
+    {
+        if constexpr (!std::is_void_v<Type>) {
+            ::new (&m_value) Type(std::forward<decltype(other)>(other));
+        }
+        m_error_state = value_index;
+    }
+
+    template <typename..., typename Dependent = Type>
+    void set_value() requires std::is_void_v<Dependent>
+    {
+        m_error_state = value_index;
+    }
+
+    auto & exception()
+    {
+        return *m_error_state;
+    }
+
+    auto is_rethrow() const
+    {
+        return m_error_state == nullptr;
+    }
+
+    void rethrow()
+    {
+        m_error_state = nullptr;
+    }
+
+    /**
+     * Sets an exception object. `this` should not hold a value.
+     */
+    void
+    set_exception(std::unique_ptr<exception_object> && exception) noexcept
+    {
+        m_error_state = std::move(exception);
+    }
+
+    /**
+     * Sets an error value, error must not be larger than  `error_code_max,
+     * and `this` should not hold a value.
+     */
+    void set_error(const error & error) noexcept
+    {
+        auto code = error.code();
+        if (code > error_code_max) {
+            code = error_code_max;
+        }
+        m_error_state = detail::reserved_index(1 + code);
+        m_error_domain = &error.domain();
+    }
+
+    error get_error() const noexcept
+    {
+        return error(m_error_state.reserved_index() - 1, *m_error_domain);
+    }
+
+    /**
+     * Propagates an exception/error value, both this and other must
+     * have no value stored.
+     */
+    void propagate(auto && other) noexcept
+    {
+        m_error_state = std::move(other.m_error_state);
+        m_error_domain = other.m_error_domain;
+    }
+
+    static constexpr auto value_index = detail::reserved_index(0);
+
+    detail::reserved_ptr<exception_object, 1 + error_code_max + 1>
+        m_error_state;
+
+    union
+    {
+        const error_domain * m_error_domain{};
+        std::conditional_t<std::is_void_v<Type>, std::nullptr_t, Type>
+            m_value;
+    };
+};
+
+template <typename Type>
+class promised;
+
+/**
  * Use as the return type of the function, throw exceptions
  * by using `co_yield`, call throwing functions by `co_await`, and
  * return values using `co_return`.
@@ -699,163 +855,6 @@ using catch_value_type_t = typename catch_value_type<Type>::type;
 template <typename Type>
 class throwing
 {
-public:
-    /**
-     * Maximum value of an error code.
-     */
-    static constexpr auto error_code_max = 255 - 1 /* reserved */;
-
-    /**
-     * The promise stored value.
-     */
-    class value_type
-    {
-    public:
-        value_type() : m_error_domain()
-        {
-        }
-
-        value_type(value_type && other) noexcept :
-            m_error_state(std::move(other.m_error_state))
-        {
-            if (m_error_state == value_index) {
-                if constexpr (!std::is_void_v<Type>) {
-                    ::new (&m_value) Type(std::move(other.m_value));
-                    if constexpr (!std::is_trivially_destructible_v<
-                                      Type>) {
-                        other.m_value.~Type();
-                    }
-                }
-            } else if (m_error_state.reserved()) {
-                m_error_domain = other.m_error_domain;
-            }
-        }
-
-        ~value_type()
-        {
-            if (m_error_state == value_index) {
-                if constexpr (!std::is_void_v<Type> &&
-                              !std::is_trivially_destructible_v<Type>) {
-                    m_value.~Type();
-                }
-            }
-        }
-
-        value_type(const value_type &) = delete;
-        value_type & operator=(value_type &&) = delete;
-        value_type & operator=(const value_type &) = delete;
-
-        explicit operator bool() const noexcept
-        {
-            return m_error_state == value_index;
-        }
-
-        bool has_exception() const noexcept
-        {
-            return static_cast<bool>(m_error_state);
-        }
-
-        bool has_error() const noexcept
-        {
-            return m_error_state.reserved() &&
-                   m_error_state != value_index;
-        }
-
-        decltype(auto) value()
-        {
-            if constexpr (std::is_same_v<Type, decltype(m_value)>) {
-                return (m_value);
-            } else {
-                return (*m_value);
-            }
-        }
-
-        /**
-         * Sets a value. `this` should not hold a value.
-         */
-        template <typename..., typename Dependent = Type>
-        void set_value(auto && other) requires(!std::is_void_v<Dependent>)
-        {
-            if constexpr (!std::is_void_v<Type>) {
-                ::new (&m_value)
-                    Type(std::forward<decltype(other)>(other));
-            }
-            m_error_state = value_index;
-        }
-
-        template <typename..., typename Dependent = Type>
-        void set_value() requires std::is_void_v<Dependent>
-        {
-            m_error_state = value_index;
-        }
-
-        auto & exception()
-        {
-            return *m_error_state;
-        }
-
-        auto is_rethrow() const
-        {
-            return m_error_state == nullptr;
-        }
-
-        void rethrow()
-        {
-            m_error_state = nullptr;
-        }
-
-        /**
-         * Sets an exception object. `this` should not hold a value.
-         */
-        void set_exception(
-            std::unique_ptr<exception_object> && exception) noexcept
-        {
-            m_error_state = std::move(exception);
-        }
-
-        /**
-         * Sets an error value, error must not be larger than  `error_code_max,
-         * and `this` should not hold a value.
-         */
-        void set_error(const error & error) noexcept
-        {
-            auto code = error.code();
-            if (code > error_code_max) {
-                code = error_code_max;
-            }
-            m_error_state = detail::reserved_index(1 + code);
-            m_error_domain = &error.domain();
-        }
-
-        error get_error() const noexcept
-        {
-            return error(m_error_state.reserved_index() - 1,
-                         *m_error_domain);
-        }
-
-        /**
-         * Propagates an exception/error value, both this and other must
-         * have no value stored.
-         */
-        void propagate(auto && other) noexcept
-        {
-            m_error_state = std::move(other.m_error_state);
-            m_error_domain = other.m_error_domain;
-        }
-
-        static constexpr auto value_index = detail::reserved_index(0);
-
-        detail::reserved_ptr<exception_object, 1 + error_code_max + 1>
-            m_error_state;
-
-        union
-        {
-            const error_domain * m_error_domain{};
-            std::conditional_t<std::is_void_v<Type>, std::nullptr_t, Type>
-                m_value;
-        };
-    };
-
 public:
     struct zpp_throwing_tag
     {
@@ -977,7 +976,7 @@ public:
 
         ~basic_promise_type() = default;
 
-        value_type m_value{};
+        promised_value<Type> m_value{};
     };
 
     /**
@@ -1030,358 +1029,6 @@ public:
         std::conditional_t<std::is_void_v<Type>,
                            returns_void<basic_promise_type>,
                            returns_value<basic_promise_type>>;
-
-    /**
-     * Represents the promised value that is stored within this object,
-     * ones the coroutine finishes, and the handle is destroyed, the result
-     * will be stored here for use with the `zpp::try_catch` logic.
-     * will be stored here for use with the `zpp::try_catch` logic.
-     */
-    class promised
-    {
-        value_type m_value{};
-
-    public:
-        friend throwing;
-
-        /**
-         * Returns true if value is stored, otherwise, an
-         * exception is stored.
-         */
-        explicit operator bool() const noexcept
-        {
-            return static_cast<bool>(m_value);
-        }
-
-        /**
-         * Returns the stored value, the behavior
-         * is undefined if there is an exception stored.
-         */
-        decltype(auto) value() && noexcept
-        {
-            if constexpr (std::is_void_v<Type>) {
-                return;
-            } else {
-                return std::move(m_value.value());
-            }
-        }
-
-        /**
-         * Returns the stored value, the behavior
-         * is undefined if there is an exception stored.
-         */
-        decltype(auto) value() & noexcept
-        {
-            if constexpr (std::is_void_v<Type>) {
-                return;
-            } else {
-                return m_value.value();
-            }
-        }
-
-    private:
-        /**
-         * Create the promise from the value type.
-         */
-        explicit promised(value_type && value) noexcept :
-            m_value(std::move(value))
-        {
-        }
-
-        /**
-         * Allows to catch exceptions. Each parameter is a catch clause
-         * that receives one parameter of the exception to be caught. A
-         * catch clause may itself be throwing. The last catch clause may
-         * have no parameters and as such catches all exceptions. Must
-         * return a value of the same type as the previously executed
-         * coroutine that is being checked for exceptions. This overload is
-         * for catch clauses that may themselves throw.
-         */
-        template <typename Clause,
-                  typename... Clauses,
-                  typename...,
-                  typename CatchType = detail::catch_value_type_t<Clause>,
-                  bool IsThrowing = requires
-        {
-            typename std::invoke_result_t<Clause>::zpp_throwing_tag;
-        }
-        || requires
-        {
-            typename std::invoke_result_t<
-                Clause,
-                std::conditional_t<std::is_void_v<CatchType>,
-                                   int,
-                                   CatchType> &>::zpp_throwing_tag;
-        }
-        > requires IsThrowing ||
-            (... || (requires {
-                 typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
-             } ||
-                     requires {
-                         typename std::invoke_result_t<
-                             Clauses,
-                             std::conditional_t<
-                                 std::is_void_v<
-                                     detail::catch_value_type_t<Clauses>>,
-                                 int,
-                                 detail::catch_value_type_t<Clauses>> &>::
-                             zpp_throwing_tag;
-                     })) ||
-            (!requires {
-                typename std::invoke_result_t<decltype(
-                    std::get<sizeof...(Clauses)>(
-                        std::declval<std::tuple<Clause, Clauses...>>()))>;
-            })throwing<Type> catch_exception_object(const dynamic_object &
-                                                        exception,
-                                                    Clause && clause,
-                                                    Clauses &&... clauses)
-        {
-            if constexpr (std::is_void_v<CatchType>) {
-                static_assert(0 == sizeof...(Clauses),
-                              "Catch all clause must be the last one.");
-                if constexpr (IsThrowing) {
-                    co_yield std::tie(set_current_exception, m_value);
-                    co_return co_await std::forward<Clause>(clause)();
-                } else {
-                    co_return std::forward<Clause>(clause)();
-                }
-            } else if constexpr (requires {
-                                     std::forward<Clause>(clause)(
-                                         m_value.get_error());
-                                 }) {
-                if (exception.address) {
-                    if constexpr (0 != sizeof...(Clauses)) {
-                        if constexpr (requires {
-                                          typename decltype(
-                                              catch_exception_object(
-                                                  exception,
-                                                  std::forward<Clauses>(
-                                                      clauses)...))::
-                                              zpp_throwing_tag;
-                                      }) {
-                            co_return co_await catch_exception_object(
-                                exception,
-                                std::forward<Clauses>(clauses)...);
-                        } else {
-                            co_return catch_exception_object(
-                                exception,
-                                std::forward<Clauses>(clauses)...);
-                        }
-                    } else {
-                        co_yield std::tie(rethrow, m_value);
-                    }
-                }
-
-                if constexpr (IsThrowing) {
-                    auto error = m_value.get_error();
-                    co_yield std::tie(set_current_exception, m_value);
-                    co_return co_await std::forward<Clause>(clause)(error);
-                } else {
-                    co_return std::forward<Clause>(clause)(
-                        m_value.get_error());
-                }
-            } else {
-                CatchType * catch_object = nullptr;
-                if (exception.address) {
-                    catch_object = static_cast<CatchType *>(
-                        detail::dyn_cast(detail::type_id<CatchType>(),
-                                         exception.address,
-                                         exception.type_id));
-                }
-
-                if (!catch_object) {
-                    if constexpr (0 != sizeof...(Clauses)) {
-                        if constexpr (requires {
-                                          typename decltype(
-                                              catch_exception_object(
-                                                  exception,
-                                                  std::forward<Clauses>(
-                                                      clauses)...))::
-                                              zpp_throwing_tag;
-                                      }) {
-                            co_return co_await catch_exception_object(
-                                exception,
-                                std::forward<Clauses>(clauses)...);
-                        } else {
-                            co_return catch_exception_object(
-                                exception,
-                                std::forward<Clauses>(clauses)...);
-                        }
-                    } else {
-                        co_yield std::tie(rethrow, m_value);
-                    }
-                }
-
-                if constexpr (IsThrowing) {
-                    co_yield std::tie(set_current_exception, m_value);
-                    co_return co_await std::forward<Clause>(clause)(
-                        *catch_object);
-                } else {
-                    co_return std::forward<Clause>(clause)(*catch_object);
-                }
-            }
-        }
-
-        /**
-         * Allows to catch exceptions. Each parameter is a catch clause
-         * that receives one parameter of the exception to be caught. A
-         * catch clause may itself be throwing. The last catch clause may
-         * have no parameters and as such catches all exceptions. Must
-         * return a value of the same type as the previously executed
-         * coroutine that is being checked for exceptions. This overload is
-         * for catch clauses that cannot throw.
-         */
-        template <typename Clause,
-                  typename... Clauses,
-                  typename...,
-                  typename CatchType = detail::catch_value_type_t<Clause>,
-                  bool IsThrowing = requires
-        {
-            typename std::invoke_result_t<Clause>::zpp_throwing_tag;
-        }
-        || requires
-        {
-            typename std::invoke_result_t<
-                Clause,
-                std::conditional_t<std::is_void_v<CatchType>,
-                                   int,
-                                   CatchType> &>::zpp_throwing_tag;
-        }
-        > requires(
-              !(IsThrowing ||
-                (... ||
-                 (requires {
-                     typename std::invoke_result_t<
-                         Clauses>::zpp_throwing_tag;
-                 } ||
-                  requires {
-                      typename std::invoke_result_t<
-                          Clauses,
-                          std::conditional_t<
-                              std::is_void_v<
-                                  detail::catch_value_type_t<Clauses>>,
-                              int,
-                              detail::catch_value_type_t<Clauses>> &>::
-                          zpp_throwing_tag;
-                  })) ||
-                (!requires {
-                    typename std::invoke_result_t<decltype(
-                        std::get<sizeof...(Clauses)>(
-                            std::declval<
-                                std::tuple<Clause, Clauses...>>()))>;
-                }))) auto catch_exception_object(const dynamic_object &
-                                                     exception,
-                                                 Clause && clause,
-                                                 Clauses &&... clauses)
-        {
-            if constexpr (std::is_void_v<CatchType>) {
-                static_assert(!sizeof...(Clauses),
-                              "Catch all object with no parameters must "
-                              "be the last one.");
-                return std::forward<Clause>(clause)();
-            } else if constexpr (requires {
-                                     std::forward<Clause>(clause)(
-                                         m_value.get_error());
-                                 }) {
-                if (exception.address) {
-                    static_assert(0 != sizeof...(Clauses),
-                                  "Missing catch all block in non "
-                                  "throwing catches.");
-                    return catch_exception_object(
-                        exception, std::forward<Clauses>(clauses)...);
-                }
-
-                return std::forward<Clause>(clause)(m_value.get_error());
-            } else {
-                CatchType * catch_object = nullptr;
-                if (exception.address) {
-                    catch_object = static_cast<CatchType *>(
-                        detail::dyn_cast(detail::type_id<CatchType>(),
-                                         exception.address,
-                                         exception.type_id));
-                }
-
-                if (!catch_object) {
-                    static_assert(0 != sizeof...(Clauses),
-                                  "Missing catch all block in non "
-                                  "throwing catches.");
-                    return catch_exception_object(
-                        exception, std::forward<Clauses>(clauses)...);
-                }
-
-                return std::forward<Clause>(clause)(*catch_object);
-            }
-        }
-
-    public:
-        /**
-         * Allows to catch exceptions. Each parameter is a catch clause
-         * that receives one parameter of the exception to be caught. A
-         * catch clause may itself be throwing. The last catch clause may
-         * have no parameters and as such catches all exceptions. Must
-         * return a value of the same type as the previously executed
-         * coroutine that is being checked for exceptions. This overload is
-         * for catch clauses that may themselves throw.
-         */
-        template <typename... Clauses>
-        inline throwing<Type>
-        catches(Clauses &&... clauses) requires requires
-        {
-            typename decltype(this->catch_exception_object(
-                exception_object::null_dynamic_object,
-                std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
-        }
-        {
-            // If there is no exception, skip.
-            if (m_value) {
-                if constexpr (std::is_void_v<Type>) {
-                    co_return;
-                } else {
-                    co_return std::move(value());
-                }
-            }
-
-            // Follow to catch the exception.
-            co_return co_await catch_exception_object(
-                m_value.has_exception()
-                    ? m_value.exception().dynamic_object()
-                    : exception_object::null_dynamic_object,
-                std::forward<Clauses>(clauses)...);
-        }
-
-        /**
-         * Allows to catch exceptions. Each parameter is a catch clause
-         * that receives one parameter of the exception to be caught. A
-         * catch clause may itself be throwing. The last catch clause may
-         * have no parameters and as such catches all exceptions. Must
-         * return a value of the same type as the previously executed
-         * coroutine that is being checked for exceptions. This overload is
-         * for catch clauses that do not throw.
-         */
-        template <typename... Clauses>
-        inline Type catches(Clauses &&... clauses) requires(!requires {
-            typename decltype(this->catch_exception_object(
-                exception_object::null_dynamic_object,
-                std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
-        })
-        {
-            // If there is no exception, skip.
-            if (m_value) {
-                if constexpr (std::is_void_v<Type>) {
-                    return;
-                } else {
-                    return std::move(value());
-                }
-            }
-
-            // Follow to catch the exception.
-            return catch_exception_object(
-                m_value.has_exception()
-                    ? m_value.exception().dynamic_object()
-                    : exception_object::null_dynamic_object,
-                std::forward<Clauses>(clauses)...);
-        }
-    };
 
     /**
      * Construct from the coroutine handle.
@@ -1442,7 +1089,7 @@ public:
     /**
      * Call the function and return the promised object.
      */
-    auto call()
+    [[nodiscard]] auto operator*() &&
     {
         m_handle.resume();
         return promised(std::move(m_handle.promise().value()));
@@ -1463,6 +1110,361 @@ private:
 };
 
 /**
+ * Represents a value that may contain an exception/error,
+ */
+template <typename Type>
+class promised
+{
+    promised_value<Type> m_value{};
+
+public:
+    template <typename>
+    friend class throwing;
+
+    /**
+     * Returns true if value is stored, otherwise, an
+     * exception is stored.
+     */
+    explicit operator bool() const noexcept
+    {
+        return static_cast<bool>(m_value);
+    }
+
+    /**
+     * Await on the object, throw any stored
+     * exception.
+     */
+    throwing<Type> operator co_await() noexcept
+    {
+        if (!m_value) {
+            co_yield std::tie(rethrow, m_value);
+        }
+        co_return std::move(m_value.value());
+    }
+
+private:
+    /**
+     * Returns the stored value, the behavior
+     * is undefined if there is an exception stored.
+     */
+    decltype(auto) value() && noexcept
+    {
+        if constexpr (std::is_void_v<Type>) {
+            return;
+        } else {
+            return std::move(m_value.value());
+        }
+    }
+
+    /**
+     * Returns the stored value, the behavior
+     * is undefined if there is an exception stored.
+     */
+    decltype(auto) value() & noexcept
+    {
+        if constexpr (std::is_void_v<Type>) {
+            return;
+        } else {
+            return m_value.value();
+        }
+    }
+
+    /**
+     * Create the promise from the value type.
+     */
+    explicit promised(promised_value<Type> && value) noexcept :
+        m_value(std::move(value))
+    {
+    }
+
+    /**
+     * Allows to catch exceptions. Each parameter is a catch clause
+     * that receives one parameter of the exception to be caught. A
+     * catch clause may itself be throwing. The last catch clause may
+     * have no parameters and as such catches all exceptions. Must
+     * return a value of the same type as the previously executed
+     * coroutine that is being checked for exceptions. This overload is
+     * for catch clauses that may themselves throw.
+     */
+    template <typename Clause,
+              typename... Clauses,
+              typename...,
+              typename CatchType = detail::catch_value_type_t<Clause>,
+              bool IsThrowing = requires
+    {
+        typename std::invoke_result_t<Clause>::zpp_throwing_tag;
+    }
+    || requires
+    {
+        typename std::invoke_result_t<
+            Clause,
+            std::conditional_t<std::is_void_v<CatchType>,
+                               int,
+                               CatchType> &>::zpp_throwing_tag;
+    }
+    > requires IsThrowing ||
+        (... ||
+         (requires {
+             typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
+         } ||
+          requires {
+              typename std::invoke_result_t<
+                  Clauses,
+                  std::conditional_t<
+                      std::is_void_v<detail::catch_value_type_t<Clauses>>,
+                      int,
+                      detail::catch_value_type_t<Clauses>> &>::
+                  zpp_throwing_tag;
+          })) ||
+        (!requires {
+            typename std::invoke_result_t<decltype(
+                std::get<sizeof...(Clauses)>(
+                    std::declval<std::tuple<Clause, Clauses...>>()))>;
+        })throwing<Type> catch_exception_object(const dynamic_object &
+                                                    exception,
+                                                Clause && clause,
+                                                Clauses &&... clauses)
+    {
+        if constexpr (std::is_void_v<CatchType>) {
+            static_assert(0 == sizeof...(Clauses),
+                          "Catch all clause must be the last one.");
+            if constexpr (IsThrowing) {
+                co_yield std::tie(set_current_exception, m_value);
+                co_return co_await std::forward<Clause>(clause)();
+            } else {
+                co_return std::forward<Clause>(clause)();
+            }
+        } else if constexpr (requires {
+                                 std::forward<Clause>(clause)(
+                                     m_value.get_error());
+                             }) {
+            if (exception.address) {
+                if constexpr (0 != sizeof...(Clauses)) {
+                    if constexpr (requires {
+                                      typename decltype(
+                                          catch_exception_object(
+                                              exception,
+                                              std::forward<Clauses>(
+                                                  clauses)...))::
+                                          zpp_throwing_tag;
+                                  }) {
+                        co_return co_await catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    } else {
+                        co_return catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    }
+                } else {
+                    co_yield std::tie(rethrow, m_value);
+                }
+            }
+
+            if constexpr (IsThrowing) {
+                auto error = m_value.get_error();
+                co_yield std::tie(set_current_exception, m_value);
+                co_return co_await std::forward<Clause>(clause)(error);
+            } else {
+                co_return std::forward<Clause>(clause)(
+                    m_value.get_error());
+            }
+        } else {
+            CatchType * catch_object = nullptr;
+            if (exception.address) {
+                catch_object = static_cast<CatchType *>(
+                    detail::dyn_cast(detail::type_id<CatchType>(),
+                                     exception.address,
+                                     exception.type_id));
+            }
+
+            if (!catch_object) {
+                if constexpr (0 != sizeof...(Clauses)) {
+                    if constexpr (requires {
+                                      typename decltype(
+                                          catch_exception_object(
+                                              exception,
+                                              std::forward<Clauses>(
+                                                  clauses)...))::
+                                          zpp_throwing_tag;
+                                  }) {
+                        co_return co_await catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    } else {
+                        co_return catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    }
+                } else {
+                    co_yield std::tie(rethrow, m_value);
+                }
+            }
+
+            if constexpr (IsThrowing) {
+                co_yield std::tie(set_current_exception, m_value);
+                co_return co_await std::forward<Clause>(clause)(
+                    *catch_object);
+            } else {
+                co_return std::forward<Clause>(clause)(*catch_object);
+            }
+        }
+    }
+
+    /**
+     * Allows to catch exceptions. Each parameter is a catch clause
+     * that receives one parameter of the exception to be caught. A
+     * catch clause may itself be throwing. The last catch clause may
+     * have no parameters and as such catches all exceptions. Must
+     * return a value of the same type as the previously executed
+     * coroutine that is being checked for exceptions. This overload is
+     * for catch clauses that cannot throw.
+     */
+    template <typename Clause,
+              typename... Clauses,
+              typename...,
+              typename CatchType = detail::catch_value_type_t<Clause>,
+              bool IsThrowing = requires
+    {
+        typename std::invoke_result_t<Clause>::zpp_throwing_tag;
+    }
+    || requires
+    {
+        typename std::invoke_result_t<
+            Clause,
+            std::conditional_t<std::is_void_v<CatchType>,
+                               int,
+                               CatchType> &>::zpp_throwing_tag;
+    }
+    > requires(
+          !(IsThrowing ||
+            (... || (requires {
+                 typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
+             } ||
+                     requires {
+                         typename std::invoke_result_t<
+                             Clauses,
+                             std::conditional_t<
+                                 std::is_void_v<
+                                     detail::catch_value_type_t<Clauses>>,
+                                 int,
+                                 detail::catch_value_type_t<Clauses>> &>::
+                             zpp_throwing_tag;
+                     })) ||
+            (!requires {
+                typename std::invoke_result_t<decltype(
+                    std::get<sizeof...(Clauses)>(
+                        std::declval<std::tuple<Clause, Clauses...>>()))>;
+            }))) auto catch_exception_object(const dynamic_object &
+                                                 exception,
+                                             Clause && clause,
+                                             Clauses &&... clauses)
+    {
+        if constexpr (std::is_void_v<CatchType>) {
+            static_assert(!sizeof...(Clauses),
+                          "Catch all object with no parameters must "
+                          "be the last one.");
+            return std::forward<Clause>(clause)();
+        } else if constexpr (requires {
+                                 std::forward<Clause>(clause)(
+                                     m_value.get_error());
+                             }) {
+            if (exception.address) {
+                static_assert(0 != sizeof...(Clauses),
+                              "Missing catch all block in non "
+                              "throwing catches.");
+                return catch_exception_object(
+                    exception, std::forward<Clauses>(clauses)...);
+            }
+
+            return std::forward<Clause>(clause)(m_value.get_error());
+        } else {
+            CatchType * catch_object = nullptr;
+            if (exception.address) {
+                catch_object = static_cast<CatchType *>(
+                    detail::dyn_cast(detail::type_id<CatchType>(),
+                                     exception.address,
+                                     exception.type_id));
+            }
+
+            if (!catch_object) {
+                static_assert(0 != sizeof...(Clauses),
+                              "Missing catch all block in non "
+                              "throwing catches.");
+                return catch_exception_object(
+                    exception, std::forward<Clauses>(clauses)...);
+            }
+
+            return std::forward<Clause>(clause)(*catch_object);
+        }
+    }
+
+public:
+    /**
+     * Allows to catch exceptions. Each parameter is a catch clause
+     * that receives one parameter of the exception to be caught. A
+     * catch clause may itself be throwing. The last catch clause may
+     * have no parameters and as such catches all exceptions. Must
+     * return a value of the same type as the previously executed
+     * coroutine that is being checked for exceptions. This overload is
+     * for catch clauses that may themselves throw.
+     */
+    template <typename... Clauses>
+    inline throwing<Type> catches(Clauses &&... clauses) requires requires
+    {
+        typename decltype(this->catch_exception_object(
+            exception_object::null_dynamic_object,
+            std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
+    }
+    {
+        // If there is no exception, skip.
+        if (m_value) {
+            if constexpr (std::is_void_v<Type>) {
+                co_return;
+            } else {
+                co_return std::move(value());
+            }
+        }
+
+        // Follow to catch the exception.
+        co_return co_await catch_exception_object(
+            m_value.has_exception()
+                ? m_value.exception().dynamic_object()
+                : exception_object::null_dynamic_object,
+            std::forward<Clauses>(clauses)...);
+    }
+
+    /**
+     * Allows to catch exceptions. Each parameter is a catch clause
+     * that receives one parameter of the exception to be caught. A
+     * catch clause may itself be throwing. The last catch clause may
+     * have no parameters and as such catches all exceptions. Must
+     * return a value of the same type as the previously executed
+     * coroutine that is being checked for exceptions. This overload is
+     * for catch clauses that do not throw.
+     */
+    template <typename... Clauses>
+    inline Type catches(Clauses &&... clauses) requires(!requires {
+        typename decltype(this->catch_exception_object(
+            exception_object::null_dynamic_object,
+            std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
+    })
+    {
+        // If there is no exception, skip.
+        if (m_value) {
+            if constexpr (std::is_void_v<Type>) {
+                return;
+            } else {
+                return std::move(value());
+            }
+        }
+
+        // Follow to catch the exception.
+        return catch_exception_object(
+            m_value.has_exception()
+                ? m_value.exception().dynamic_object()
+                : exception_object::null_dynamic_object,
+            std::forward<Clauses>(clauses)...);
+    }
+};
+
+/**
  * Use to try executing a function object and catch exceptions from it.
  * This also neatly makes sure in an implicit way that destructors are
  * called before the catch blocks are called, due to the returned coroutine
@@ -1475,7 +1477,7 @@ auto try_catch(Clause && clause)
                       typename std::invoke_result_t<
                           Clause>::zpp_throwing_tag;
                   }) {
-        return std::forward<Clause>(clause)().call();
+        return *std::forward<Clause>(clause)();
     } else {
         static_assert(std::is_void_v<Clause>,
                       "try_catch clause must be a coroutine.");
