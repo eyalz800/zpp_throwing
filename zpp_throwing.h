@@ -842,7 +842,7 @@ public:
 };
 
 template <typename Type>
-class promised;
+class result;
 
 /**
  * Use as the return type of the function, throw exceptions
@@ -1087,12 +1087,12 @@ public:
     }
 
     /**
-     * Call the function and return the promised object.
+     * Call the function and return the result object.
      */
     [[nodiscard]] auto operator*() &&
     {
         m_handle.resume();
-        return promised(std::move(m_handle.promise().value()));
+        return result(std::move(m_handle.promise().value()));
     }
 
     /**
@@ -1113,7 +1113,7 @@ private:
  * Represents a value that may contain an exception/error,
  */
 template <typename Type>
-class promised
+class result
 {
     promised_value<Type> m_value{};
 
@@ -1123,7 +1123,7 @@ public:
 
     /**
      * Returns true if value is stored, otherwise, an
-     * exception is stored.
+     * exception/error is stored.
      */
     explicit operator bool() const noexcept
     {
@@ -1142,7 +1142,6 @@ public:
         co_return std::move(m_value.value());
     }
 
-private:
     /**
      * Returns the stored value, the behavior
      * is undefined if there is an exception stored.
@@ -1169,10 +1168,11 @@ private:
         }
     }
 
+private:
     /**
      * Create the promise from the value type.
      */
-    explicit promised(promised_value<Type> && value) noexcept :
+    explicit result(promised_value<Type> && value) noexcept :
         m_value(std::move(value))
     {
     }
