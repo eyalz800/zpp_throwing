@@ -1424,9 +1424,12 @@ public:
 
         // Follow to catch the exception.
         co_return co_await catch_exception_object(
-            m_value.has_exception()
-                ? m_value.exception().dynamic_object()
-                : exception_object::null_dynamic_object,
+            // Increase chance `catches` gets inlined.
+            [&] {
+                return m_value.has_exception()
+                           ? m_value.exception().dynamic_object()
+                           : exception_object::null_dynamic_object;
+            }(),
             std::forward<Clauses>(clauses)...);
     }
 
@@ -1457,9 +1460,12 @@ public:
 
         // Follow to catch the exception.
         return catch_exception_object(
-            m_value.has_exception()
-                ? m_value.exception().dynamic_object()
-                : exception_object::null_dynamic_object,
+            // Increase chance `catches` gets inlined.
+            [&] {
+                return m_value.has_exception()
+                           ? m_value.exception().dynamic_object()
+                           : exception_object::null_dynamic_object;
+            }(),
             std::forward<Clauses>(clauses)...);
     }
 };
