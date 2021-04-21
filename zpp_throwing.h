@@ -68,6 +68,7 @@ public:
     using base::get;
     using base::release;
     using base::reset;
+    using base::swap;
     using base::operator*;
     using base::operator->;
     friend auto operator<=>(const reserved_ptr &,
@@ -85,11 +86,6 @@ public:
     constexpr explicit operator bool() const noexcept
     {
         return get() != nullptr && !reserved();
-    }
-
-    void swap(reserved_ptr & other) noexcept
-    {
-        other.swap(*this);
     }
 
     auto reserved_index() const noexcept
@@ -440,6 +436,8 @@ class exception_object
 {
 public:
     virtual struct dynamic_object dynamic_object() noexcept = 0;
+    virtual void move_construct(void * target) noexcept = 0;
+    virtual void move_assign(exception_object & target) noexcept = 0;
     virtual ~exception_object() = 0;
 
     static constexpr struct dynamic_object null_dynamic_object = {};
@@ -697,52 +695,53 @@ static constexpr auto error_code_max = 255 - 1 /* reserved */;
  * The promise stored value.
  */
 template <typename Type>
-class promised_value
+struct promised_value
 {
-public:
     promised_value() : m_error_domain()
     {
     }
 
     promised_value(promised_value && other) noexcept(
-        noexcept(std::is_nothrow_move_assignable_v<Type>)) :
-        m_error_state(std::move(other.m_error_state))
+        std::is_void_v<Type> || std::is_nothrow_move_constructible_v<Type>)
     {
-        if (m_error_state == value_index) {
+        if (other.m_error_state == value_index) {
             if constexpr (!std::is_void_v<Type>) {
                 ::new (std::addressof(m_value))
                     Type(std::move(other.m_value));
-                if constexpr (!std::is_trivially_destructible_v<Type>) {
-                    other.m_value.~Type();
-                }
             }
-        } else if (m_error_state.reserved()) {
-            m_error_domain = other.m_error_domain;
-        }
-    }
-
-    promised_value & operator=(promised_value other) noexcept(
-        noexcept(std::is_nothrow_move_constructible_v<Type> &&
-                     std::is_nothrow_move_assignable_v<Type>))
-    {
-        if (*this) {
-            if (other) {
-                m_value = std::move(other.m_value);
-                m_error_state = value_index;
-            } else {
-                if constexpr (!std::is_trivially_destructible_v<Type>) {
-                    m_value.~Type();
-                }
-                m_error_state = std::move(other.m_error_state);
-                m_error_domain = other.m_error_domain;
-            }
-        } else if (other) {
-            ::new (std::addressof(m_value)) Type(std::move(other.m_value));
             m_error_state = value_index;
         } else {
             m_error_state = std::move(other.m_error_state);
             m_error_domain = other.m_error_domain;
         }
+    }
+
+    promised_value & operator=(promised_value && other) noexcept(
+        std::is_void_v<Type> ||
+        (std::is_nothrow_move_constructible_v<Type> &&
+         std::is_nothrow_move_assignable_v<Type>))
+    {
+        if (this == std::addressof(other)) {
+            return *this;
+        }
+
+        if (other.m_error_state == value_index) {
+            if (m_error_state == value_index) {
+                if constexpr (!std::is_void_v<Type>) {
+                    m_value = std::move(other.m_value);
+                }
+            } else {
+                if constexpr (!std::is_void_v<Type>) {
+                    ::new (std::addressof(m_value))
+                        Type(std::move(other.m_value));
+                }
+                m_error_state = value_index;
+            }
+        } else {
+            m_error_state = std::move(other.m_error_state);
+            m_error_domain = other.m_error_domain;
+        }
+
         return *this;
     }
 
@@ -800,7 +799,7 @@ public:
         m_error_state = value_index;
     }
 
-    auto & exception()
+    auto & exception() noexcept
     {
         return *m_error_state;
     }
@@ -816,15 +815,6 @@ public:
     }
 
     /**
-     * Sets an exception object. `this` should not hold a value.
-     */
-    void
-    set_exception(std::unique_ptr<exception_object> && exception) noexcept
-    {
-        m_error_state = std::move(exception);
-    }
-
-    /**
      * Sets an error value, error must not be larger than  `error_code_max,
      * and `this` should not hold a value.
      */
@@ -834,13 +824,14 @@ public:
         if (code > error_code_max) {
             code = error_code_max;
         }
-        m_error_state = detail::reserved_index(1 + code);
+        m_error_state = detail::reserved_index(reserved_indices + code);
         m_error_domain = &error.domain();
     }
 
     error get_error() const noexcept
     {
-        return error(m_error_state.reserved_index() - 1, *m_error_domain);
+        return error(m_error_state.reserved_index() - reserved_indices,
+                     *m_error_domain);
     }
 
     /**
@@ -853,9 +844,21 @@ public:
         m_error_domain = other.m_error_domain;
     }
 
-    static constexpr auto value_index = detail::reserved_index(0);
+    /**
+     * Sets an exception object. `this` should not hold a value.
+     */
+    template <typename Exception>
+    auto emplace_exception(auto &&... arguments)
+    {
+        m_error_state = std::make_unique<Exception>(
+            std::forward<decltype(arguments)>(arguments)...);
+    }
 
-    detail::reserved_ptr<exception_object, 1 + error_code_max + 1>
+    static constexpr auto value_index = detail::reserved_index(0);
+    static constexpr auto reserved_indices = 1;
+
+    detail::reserved_ptr<exception_object,
+                         reserved_indices + error_code_max + 1>
         m_error_state;
 
     union
@@ -875,8 +878,7 @@ public:
  * to catch exceptions thrown from it.
  */
 template <typename Type>
-class [[nodiscard]] throwing
-{
+class [[nodiscard]] throwing {
     template <typename>
     friend class result;
 
@@ -917,9 +919,8 @@ public:
             using type = std::remove_cv_t<std::remove_reference_t<Value>>;
 
             // Define the exception object that will be type erased.
-            class exception : public exception_object
+            struct exception : public exception_object
             {
-            public:
                 exception(Value && value) : m_value(std::move(value))
                 {
                 }
@@ -933,13 +934,26 @@ public:
                             std::addressof(m_value)};
                 }
 
+                void
+                move_construct(void * target) noexcept override
+                {
+                    ::new (target) exception(std::move(m_value));
+                }
+
+                void
+                move_assign(exception_object & target) noexcept override
+                {
+                    static_cast<exception &>(target).m_value =
+                        std::move(m_value);
+                }
+
                 ~exception() override = default;
 
                 type m_value;
             };
 
-            m_value.set_exception(
-                std::make_unique<exception>(std::forward<Value>(value)));
+            m_value.template emplace_exception<exception>(
+                std::forward<Value>(value));
             return suspend_always{};
         }
 
@@ -1138,8 +1152,7 @@ private:
  * Represents a value that may contain an exception/error,
  */
 template <typename Type>
-class [[nodiscard]] result
-{
+class [[nodiscard]] result {
     promised_value<Type> m_value{};
 
 public:
@@ -1244,10 +1257,10 @@ private:
             typename std::invoke_result_t<decltype(
                 std::get<sizeof...(Clauses)>(
                     std::declval<std::tuple<Clause, Clauses...>>()))>;
-        })throwing<Type> catch_exception_object(const dynamic_object &
-                                                    exception,
-                                                Clause && clause,
-                                                Clauses &&... clauses)
+        })throwing<Type>
+        catch_exception_object(const dynamic_object & exception,
+                               Clause && clause,
+                               Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(0 == sizeof...(Clauses),
@@ -1375,10 +1388,10 @@ private:
                 typename std::invoke_result_t<decltype(
                     std::get<sizeof...(Clauses)>(
                         std::declval<std::tuple<Clause, Clauses...>>()))>;
-            }))) auto catch_exception_object(const dynamic_object &
-                                                 exception,
-                                             Clause && clause,
-                                             Clauses &&... clauses)
+            }))) auto
+        catch_exception_object(const dynamic_object & exception,
+                               Clause && clause,
+                               Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(!sizeof...(Clauses),
@@ -1430,7 +1443,7 @@ public:
      * for catch clauses that may themselves throw.
      */
     template <typename... Clauses>
-    inline throwing<Type> catches(Clauses &&... clauses) requires requires
+    inline throwing<Type> catches(Clauses && ... clauses) requires requires
     {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
@@ -1467,7 +1480,7 @@ public:
      * for catch clauses that do not throw.
      */
     template <typename... Clauses>
-    inline Type catches(Clauses &&... clauses) requires(!requires {
+    inline Type catches(Clauses && ... clauses) requires(!requires {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
             std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
