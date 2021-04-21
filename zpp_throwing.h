@@ -704,12 +704,14 @@ public:
     {
     }
 
-    promised_value(promised_value && other) noexcept :
+    promised_value(promised_value && other) noexcept(
+        noexcept(std::is_nothrow_move_assignable_v<Type>)) :
         m_error_state(std::move(other.m_error_state))
     {
         if (m_error_state == value_index) {
             if constexpr (!std::is_void_v<Type>) {
-                ::new (&m_value) Type(std::move(other.m_value));
+                ::new (std::addressof(m_value))
+                    Type(std::move(other.m_value));
                 if constexpr (!std::is_trivially_destructible_v<Type>) {
                     other.m_value.~Type();
                 }
@@ -717,6 +719,31 @@ public:
         } else if (m_error_state.reserved()) {
             m_error_domain = other.m_error_domain;
         }
+    }
+
+    promised_value & operator=(promised_value other) noexcept(
+        noexcept(std::is_nothrow_move_constructible_v<Type> &&
+                     std::is_nothrow_move_assignable_v<Type>))
+    {
+        if (*this) {
+            if (other) {
+                m_value = std::move(other.m_value);
+                m_error_state = value_index;
+            } else {
+                if constexpr (!std::is_trivially_destructible_v<Type>) {
+                    m_value.~Type();
+                }
+                m_error_state = std::move(other.m_error_state);
+                m_error_domain = other.m_error_domain;
+            }
+        } else if (other) {
+            ::new (std::addressof(m_value)) Type(std::move(other.m_value));
+            m_error_state = value_index;
+        } else {
+            m_error_state = std::move(other.m_error_state);
+            m_error_domain = other.m_error_domain;
+        }
+        return *this;
     }
 
     ~promised_value()
@@ -730,8 +757,6 @@ public:
     }
 
     promised_value(const promised_value &) = delete;
-    promised_value & operator=(promised_value &&) = delete;
-    promised_value & operator=(const promised_value &) = delete;
 
     explicit operator bool() const noexcept
     {
@@ -1124,8 +1149,7 @@ public:
     /**
      * Create the result from the throwing object.
      */
-    result(throwing<Type> throwing) noexcept :
-        m_value(throwing.invoke())
+    result(throwing<Type> throwing) noexcept : m_value(throwing.invoke())
     {
     }
 
