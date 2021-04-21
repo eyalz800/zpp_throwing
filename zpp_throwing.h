@@ -875,7 +875,7 @@ public:
  * to catch exceptions thrown from it.
  */
 template <typename Type>
-class throwing
+class [[nodiscard]] throwing
 {
     template <typename>
     friend class result;
@@ -1138,7 +1138,7 @@ private:
  * Represents a value that may contain an exception/error,
  */
 template <typename Type>
-class result
+class [[nodiscard]] result
 {
     promised_value<Type> m_value{};
 
