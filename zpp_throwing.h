@@ -394,7 +394,7 @@ public:
     /**
      * Returns true if the error indicates failure, else false.
      */
-    bool fail() const noexcept
+    bool failure() const noexcept
     {
         return !m_domain->success(m_code);
     }
@@ -786,11 +786,6 @@ struct promised_value
     bool has_exception() const noexcept
     {
         return static_cast<bool>(m_error_state);
-    }
-
-    bool has_error() const noexcept
-    {
-        return m_error_state.reserved() && m_error_state != value_index;
     }
 
     decltype(auto) value()
@@ -1209,7 +1204,7 @@ public:
      * Returns true if exception/error is stored, otherwise,
      * value is stored.
      */
-    bool fail() const noexcept
+    bool failure() const noexcept
     {
         return !static_cast<bool>(m_value);
     }
