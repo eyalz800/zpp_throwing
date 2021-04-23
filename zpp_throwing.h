@@ -68,7 +68,6 @@ public:
     using base::get;
     using base::release;
     using base::reset;
-    using base::swap;
     using base::operator*;
     using base::operator->;
     friend auto operator<=>(const reserved_ptr &,
