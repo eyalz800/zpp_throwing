@@ -379,9 +379,25 @@ public:
     /**
      * Returns true if the error indicates success, else false.
      */
-    explicit operator bool() const
+    explicit operator bool() const noexcept
     {
         return m_domain->success(m_code);
+    }
+
+    /**
+     * Returns true if the error indicates success, else false.
+     */
+    bool success() const noexcept
+    {
+        return m_domain->success(m_code);
+    }
+
+    /**
+     * Returns true if the error indicates failure, else false.
+     */
+    bool fail() const noexcept
+    {
+        return !m_domain->success(m_code);
     }
 
     /**
@@ -1179,6 +1195,24 @@ public:
     explicit operator bool() const noexcept
     {
         return static_cast<bool>(m_value);
+    }
+
+    /**
+     * Returns true if value is stored, otherwise, an
+     * exception/error is stored.
+     */
+    bool success() const noexcept
+    {
+        return static_cast<bool>(m_value);
+    }
+
+    /**
+     * Returns true if exception/error is stored, otherwise,
+     * value is stored.
+     */
+    bool fail() const noexcept
+    {
+        return !static_cast<bool>(m_value);
     }
 
     /**
