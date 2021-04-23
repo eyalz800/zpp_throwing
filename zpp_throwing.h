@@ -199,6 +199,8 @@ std::conditional_t<std::is_void_v<ErrorCode>, ErrorCode, void> err_domain;
 class error_domain
 {
 public:
+    using integral_type = int;
+
     /**
      * Returns the error domain name.
      */
@@ -210,12 +212,13 @@ public:
      * For convienience, you may return zpp::error::no_error for success.
      * All other codes must return non empty string views.
      */
-    virtual std::string_view message(int code) const noexcept = 0;
+    virtual std::string_view message(integral_type code) const
+        noexcept = 0;
 
     /**
      * Returns true if success code, else false.
      */
-    bool success(int code) const
+    bool success(integral_type code) const
     {
         return code == m_success_code;
     }
@@ -224,7 +227,8 @@ protected:
     /**
      * Creates an error domain whose success code is 'success_code'.
      */
-    constexpr error_domain(int success_code) : m_success_code(success_code)
+    constexpr error_domain(integral_type success_code) :
+        m_success_code(success_code)
     {
     }
 
@@ -237,7 +241,7 @@ private:
     /**
      * The success code.
      */
-    int m_success_code{};
+    integral_type m_success_code{};
 };
 
 /**
@@ -315,6 +319,8 @@ constexpr auto make_error_domain(std::string_view name,
 class error
 {
 public:
+    using integral_type = error_domain::integral_type;
+
     /**
      * Disables default construction.
      */
@@ -334,13 +340,13 @@ public:
     }
 
     /**
-     * Constructs an error from an error code enumeration, the
-     * domain is given explicitly in this overload.
+     * Constructs an error from an error code enumeration/integral type,
+     * the domain is given explicitly in this overload.
      */
     template <typename ErrorCode>
     error(ErrorCode error_code, const error_domain & domain) :
         m_domain(std::addressof(domain)),
-        m_code(static_cast<int>(error_code))
+        m_code(static_cast<integral_type>(error_code))
     {
     }
 
@@ -392,7 +398,7 @@ private:
     /**
      * The error code.
      */
-    int m_code{};
+    integral_type m_code{};
 };
 
 #if __has_include(<coroutine>)
