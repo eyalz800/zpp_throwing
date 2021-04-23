@@ -40,30 +40,42 @@ struct reserved_storage
 
     static auto reserved_index(auto pointer) noexcept
     {
-        return (enum reserved_index)(
-            reinterpret_cast<const char *>(pointer) - std::begin(storage));
+        return (
+            enum reserved_index)(reinterpret_cast<const char *>(pointer) -
+                                 std::begin(storage));
     }
 
     constexpr static char storage[Size]{};
 };
 
-template <typename Type, std::size_t Size>
+template <typename Type, std::size_t Size, typename Allocator = void>
 struct reserved_delete
 {
     void operator()(Type * pointer)
     {
         if (!reserved_storage<Size>::reserved(pointer)) {
-            delete pointer;
+            if constexpr (std::is_void_v<Allocator>) {
+                delete pointer;
+            } else {
+                Allocator allocator;
+                std::allocator_traits<Allocator>::destroy(allocator,
+                                                          pointer);
+                std::allocator_traits<Allocator>::deallocate(
+                    allocator,
+                    reinterpret_cast<std::byte *>(pointer),
+                    sizeof(*pointer));
+            }
         }
     }
 };
 
-template <typename Type, std::size_t Size>
+template <typename Type, std::size_t Size, typename Allocator = void>
 requires(!std::is_array_v<Type>) class reserved_ptr
-    : private std::unique_ptr<Type, reserved_delete<Type, Size>>
+    : private std::unique_ptr<Type, reserved_delete<Type, Size, Allocator>>
 {
 public:
-    using base = std::unique_ptr<Type, reserved_delete<Type, Size>>;
+    using base =
+        std::unique_ptr<Type, reserved_delete<Type, Size, Allocator>>;
     using base::base;
     using base::get;
     using base::release;
@@ -78,7 +90,11 @@ public:
     {
     }
 
-    reserved_ptr(std::unique_ptr<Type> && other) : base(other.release())
+    template <typename OtherType>
+    requires std::is_convertible_v<std::add_pointer_t<OtherType>,
+                                   std::add_pointer_t<Type>>
+    reserved_ptr(reserved_ptr<OtherType, Size, Allocator> && other) :
+        base(other.release())
     {
     }
 
@@ -115,65 +131,85 @@ public:
     }
 };
 
-template <typename Type, std::size_t Size>
-constexpr auto operator==(const reserved_ptr<Type, Size> & left,
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto operator==(const reserved_ptr<Type, Size, Allocator> & left,
                           std::nullptr_t) noexcept
 {
     return left.get() == nullptr;
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator==(std::nullptr_t,
-                          const reserved_ptr<Type, Size> & right) noexcept
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto
+operator==(std::nullptr_t,
+           const reserved_ptr<Type, Size, Allocator> & right) noexcept
 {
     return right.get() == nullptr;
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator!=(const reserved_ptr<Type, Size> & left,
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto operator!=(const reserved_ptr<Type, Size, Allocator> & left,
                           std::nullptr_t) noexcept
 {
     return left.get() != nullptr;
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator!=(std::nullptr_t,
-                          const reserved_ptr<Type, Size> & right) noexcept
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto
+operator!=(std::nullptr_t,
+           const reserved_ptr<Type, Size, Allocator> & right) noexcept
 {
     return right.get() != nullptr;
 }
 
-template <typename Type, std::size_t Size>
+template <typename Type, std::size_t Size, typename Allocator = void>
 auto make_reserved(auto &&... arguments)
 {
-    return reserved_ptr<Type, Size>(
-        new Type(std::forward<decltype(arguments)>(arguments)...));
+    if constexpr (std::is_void_v<Allocator>) {
+        return reserved_ptr<Type, Size, Allocator>(
+            new Type(std::forward<decltype(arguments)>(arguments)...));
+    } else {
+        Allocator allocator;
+        auto allocated = std::allocator_traits<Allocator>::allocate(
+            allocator, sizeof(Type));
+        if (!allocated) {
+            return reserved_ptr<Type, Size, Allocator>(nullptr);
+        }
+
+        std::allocator_traits<Allocator>::construct(
+            allocator,
+            reinterpret_cast<Type *>(allocated),
+            std::forward<decltype(arguments)>(arguments)...);
+
+        return reserved_ptr<Type, Size, Allocator>(allocated);
+    }
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator==(const reserved_ptr<Type, Size> & left,
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto operator==(const reserved_ptr<Type, Size, Allocator> & left,
                           reserved_index right) noexcept
 {
     return left.reserved() && left.reserved_index() == right;
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator==(reserved_index left,
-                          const reserved_ptr<Type, Size> & right) noexcept
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto
+operator==(reserved_index left,
+           const reserved_ptr<Type, Size, Allocator> & right) noexcept
 {
     return right.reserved() && right.reserved_index() == left;
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator!=(const reserved_ptr<Type, Size> & left,
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto operator!=(const reserved_ptr<Type, Size, Allocator> & left,
                           reserved_index right) noexcept
 {
     return !(left == right);
 }
 
-template <typename Type, std::size_t Size>
-constexpr auto operator!=(reserved_index left,
-                          const reserved_ptr<Type, Size> & right) noexcept
+template <typename Type, std::size_t Size, typename Allocator>
+constexpr auto
+operator!=(reserved_index left,
+           const reserved_ptr<Type, Size, Allocator> & right) noexcept
 {
     return !(left == right);
 }
@@ -211,8 +247,8 @@ public:
      * For convienience, you may return zpp::error::no_error for success.
      * All other codes must return non empty string views.
      */
-    virtual std::string_view message(integral_type code) const
-        noexcept = 0;
+    virtual std::string_view
+    message(integral_type code) const noexcept = 0;
 
     /**
      * Returns true if success code, else false.
@@ -503,7 +539,7 @@ union type_info_entry
     {
     }
 
-    constexpr type_info_entry(void * (*function)(void *)noexcept) :
+    constexpr type_info_entry(void * (*function)(void *) noexcept) :
         function(function)
     {
     }
@@ -615,8 +651,8 @@ inline void * dyn_cast(const void * base,
 
 template <typename Type>
 struct catch_type
-    : catch_type<decltype(
-          &std::remove_cv_t<std::remove_reference_t<Type>>::operator())>
+    : catch_type<decltype(&std::remove_cv_t<
+                          std::remove_reference_t<Type>>::operator())>
 {
 };
 
@@ -715,7 +751,7 @@ static constexpr auto error_code_max = 255 - 1 /* reserved */;
 /**
  * The promise stored value.
  */
-template <typename Type>
+template <typename Type, typename Allocator = void>
 struct promised_value
 {
     promised_value() : m_error_domain()
@@ -866,15 +902,29 @@ struct promised_value
     template <typename Exception>
     auto emplace_exception(auto &&... arguments)
     {
-        m_error_state = std::make_unique<Exception>(
-            std::forward<decltype(arguments)>(arguments)...);
+        m_error_state =
+            detail::make_reserved<Exception,
+                                  reserved_indices + error_code_max + 1,
+                                  Allocator>(
+                std::forward<decltype(arguments)>(arguments)...);
+
+        if constexpr (std::is_void_v<Allocator>) {
+            // Nothing to be done.
+
+        } else if constexpr (noexcept(std::declval<Allocator>().allocate(
+                                 std::size_t{}))) {
+            if (m_error_state == nullptr) {
+                set_error(std::errc::not_enough_memory);
+            }
+        }
     }
 
     static constexpr auto value_index = detail::reserved_index(0);
     static constexpr auto reserved_indices = 1;
 
     detail::reserved_ptr<exception_object,
-                         reserved_indices + error_code_max + 1>
+                         reserved_indices + error_code_max + 1,
+                         Allocator>
         m_error_state;
 
     union
@@ -893,9 +943,10 @@ struct promised_value
  * Use the `zpp::try_catch` function to execute a function object and then
  * to catch exceptions thrown from it.
  */
-template <typename Type>
-class [[nodiscard]] throwing {
-    template <typename>
+template <typename Type, typename Allocator = void>
+class [[nodiscard]] throwing
+{
+    template <typename, typename>
     friend class result;
 
 public:
@@ -910,7 +961,7 @@ public:
     class basic_promise_type
     {
     public:
-        template <typename>
+        template <typename, typename>
         friend class throwing;
 
         auto initial_suspend() noexcept
@@ -1031,7 +1082,54 @@ public:
 
         ~basic_promise_type() = default;
 
-        promised_value<Type> m_value{};
+        promised_value<Type, Allocator> m_value{};
+    };
+
+    template <typename Base>
+    struct throwing_allocator : public Base
+    {
+        void * operator new(std::size_t size)
+        {
+            Allocator allocator;
+            return std::allocator_traits<Allocator>::allocate(allocator,
+                                                              size);
+        }
+
+        void operator delete(void * pointer, std::size_t size) noexcept
+        {
+            Allocator allocator;
+            std::allocator_traits<Allocator>::deallocate(
+                allocator, static_cast<std::byte *>(pointer), size);
+        }
+
+    protected:
+        ~throwing_allocator() = default;
+    };
+
+    template <typename Base>
+    struct noexcept_allocator : public Base
+    {
+        void * operator new(std::size_t size) noexcept
+        {
+            Allocator allocator;
+            return std::allocator_traits<Allocator>::allocate(allocator,
+                                                              size);
+        }
+
+        void operator delete(void * pointer, std::size_t size) noexcept
+        {
+            Allocator allocator;
+            std::allocator_traits<Allocator>::deallocate(
+                allocator, static_cast<std::byte *>(pointer), size);
+        }
+
+        static auto get_return_object_on_allocation_failure()
+        {
+            return throwing(nullptr);
+        }
+
+    protected:
+        ~noexcept_allocator() = default;
     };
 
     /**
@@ -1076,14 +1174,36 @@ public:
         }
     };
 
+    static constexpr bool is_noexcept_allocator =
+        noexcept(std::declval<std::conditional_t<std::is_void_v<Allocator>,
+                                                 std::allocator<std::byte>,
+                                                 Allocator>>()
+                     .allocate(std::size_t{}));
+
     /**
      * The actual promise type, which adds the appropriate
      * return strategy to the basic promise type.
      */
-    using promise_type =
-        std::conditional_t<std::is_void_v<Type>,
-                           returns_void<basic_promise_type>,
-                           returns_value<basic_promise_type>>;
+    using promise_type = std::conditional_t<
+        std::is_void_v<Type>,
+        std::conditional_t<
+            std::is_void_v<Allocator>,
+            returns_void<basic_promise_type>,
+            std::conditional_t<
+                is_noexcept_allocator,
+                returns_void<noexcept_allocator<basic_promise_type>>,
+                returns_void<throwing_allocator<basic_promise_type>>>>,
+        std::conditional_t<
+            std::is_void_v<Allocator>,
+            returns_value<basic_promise_type>,
+            std::conditional_t<
+                is_noexcept_allocator,
+                returns_value<noexcept_allocator<basic_promise_type>>,
+                returns_value<throwing_allocator<basic_promise_type>>>>>;
+
+    explicit constexpr throwing(std::nullptr_t) noexcept
+    {
+    }
 
     /**
      * Construct from the coroutine handle.
@@ -1111,6 +1231,11 @@ public:
      */
     bool await_ready()
     {
+        if constexpr (is_noexcept_allocator) {
+            if (!m_handle) {
+                return false;
+            }
+        }
         m_handle.resume();
         return static_cast<bool>(m_handle.promise());
     }
@@ -1121,6 +1246,14 @@ public:
     template <typename PromiseType>
     void await_suspend(coroutine_handle<PromiseType> outer_handle) noexcept
     {
+        if constexpr (is_noexcept_allocator) {
+            if (!m_handle) {
+                outer_handle.promise().value().set_error(
+                    std::errc::not_enough_memory);
+                return;
+            }
+        }
+
         auto & value = m_handle.promise().value();
 
         // Propagate exception unless it is rethrow.
@@ -1157,6 +1290,13 @@ private:
      */
     auto invoke()
     {
+        if constexpr (is_noexcept_allocator) {
+            if (!m_handle) {
+                promised_value<Type, Allocator> promised_value;
+                promised_value.set_error(std::errc::not_enough_memory);
+                return promised_value;
+            }
+        }
         m_handle.resume();
         return std::move(m_handle.promise().value());
     }
@@ -1167,18 +1307,20 @@ private:
 /**
  * Represents a value that may contain an exception/error,
  */
-template <typename Type>
-class [[nodiscard]] result {
-    promised_value<Type> m_value{};
+template <typename Type, typename Allocator = void>
+class [[nodiscard]] result
+{
+    promised_value<Type, Allocator> m_value{};
 
 public:
-    template <typename>
+    template <typename, typename>
     friend class throwing;
 
     /**
      * Create the result from the throwing object.
      */
-    result(throwing<Type> throwing) noexcept : m_value(throwing.invoke())
+    result(throwing<Type, Allocator> throwing) noexcept :
+        m_value(throwing.invoke())
     {
     }
 
@@ -1213,7 +1355,7 @@ public:
      * Await on the object, throw any stored
      * exception.
      */
-    throwing<Type> operator co_await() noexcept
+    throwing<Type, Allocator> operator co_await() noexcept
     {
         if (!m_value) {
             co_yield std::tie(rethrow, m_value);
@@ -1273,28 +1415,32 @@ private:
                                int,
                                CatchType> &>::zpp_throwing_tag;
     }
-    > requires IsThrowing ||
+    >
+    requires IsThrowing ||
         (... ||
-         (requires {
-             typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
-         } ||
-          requires {
-              typename std::invoke_result_t<
-                  Clauses,
-                  std::conditional_t<
-                      std::is_void_v<detail::catch_value_type_t<Clauses>>,
-                      int,
-                      detail::catch_value_type_t<Clauses>> &>::
-                  zpp_throwing_tag;
-          })) ||
+         (
+             requires {
+                 typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
+             } ||
+             requires {
+                 typename std::invoke_result_t<
+                     Clauses,
+                     std::conditional_t<
+                         std::is_void_v<
+                             detail::catch_value_type_t<Clauses>>,
+                         int,
+                         detail::catch_value_type_t<Clauses>> &>::
+                     zpp_throwing_tag;
+             })) ||
         (!requires {
-            typename std::invoke_result_t<decltype(
-                std::get<sizeof...(Clauses)>(
+            typename std::invoke_result_t<
+                decltype(std::get<sizeof...(Clauses)>(
                     std::declval<std::tuple<Clause, Clauses...>>()))>;
-        })throwing<Type>
-        catch_exception_object(const dynamic_object & exception,
-                               Clause && clause,
-                               Clauses &&... clauses)
+        })
+            throwing<Type, Allocator> catch_exception_object(
+                const dynamic_object & exception,
+                Clause && clause,
+                Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(0 == sizeof...(Clauses),
@@ -1311,14 +1457,13 @@ private:
                              }) {
             if (exception.address) {
                 if constexpr (0 != sizeof...(Clauses)) {
-                    if constexpr (requires {
-                                      typename decltype(
-                                          catch_exception_object(
-                                              exception,
-                                              std::forward<Clauses>(
-                                                  clauses)...))::
-                                          zpp_throwing_tag;
-                                  }) {
+                    if constexpr (
+                        requires {
+                            typename decltype(catch_exception_object(
+                                exception,
+                                std::forward<Clauses>(
+                                    clauses)...))::zpp_throwing_tag;
+                        }) {
                         co_return co_await catch_exception_object(
                             exception, std::forward<Clauses>(clauses)...);
                     } else {
@@ -1349,14 +1494,13 @@ private:
 
             if (!catch_object) {
                 if constexpr (0 != sizeof...(Clauses)) {
-                    if constexpr (requires {
-                                      typename decltype(
-                                          catch_exception_object(
-                                              exception,
-                                              std::forward<Clauses>(
-                                                  clauses)...))::
-                                          zpp_throwing_tag;
-                                  }) {
+                    if constexpr (
+                        requires {
+                            typename decltype(catch_exception_object(
+                                exception,
+                                std::forward<Clauses>(
+                                    clauses)...))::zpp_throwing_tag;
+                        }) {
                         co_return co_await catch_exception_object(
                             exception, std::forward<Clauses>(clauses)...);
                     } else {
@@ -1403,29 +1547,31 @@ private:
                                int,
                                CatchType> &>::zpp_throwing_tag;
     }
-    > requires(
-          !(IsThrowing ||
-            (... || (requires {
+    >
+    requires(!(
+        IsThrowing ||
+        (... ||
+         (
+             requires {
                  typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
              } ||
-                     requires {
-                         typename std::invoke_result_t<
-                             Clauses,
-                             std::conditional_t<
-                                 std::is_void_v<
-                                     detail::catch_value_type_t<Clauses>>,
-                                 int,
-                                 detail::catch_value_type_t<Clauses>> &>::
-                             zpp_throwing_tag;
-                     })) ||
-            (!requires {
-                typename std::invoke_result_t<decltype(
-                    std::get<sizeof...(Clauses)>(
-                        std::declval<std::tuple<Clause, Clauses...>>()))>;
-            }))) auto
-        catch_exception_object(const dynamic_object & exception,
-                               Clause && clause,
-                               Clauses &&... clauses)
+             requires {
+                 typename std::invoke_result_t<
+                     Clauses,
+                     std::conditional_t<
+                         std::is_void_v<
+                             detail::catch_value_type_t<Clauses>>,
+                         int,
+                         detail::catch_value_type_t<Clauses>> &>::
+                     zpp_throwing_tag;
+             })) ||
+        (!requires {
+            typename std::invoke_result_t<
+                decltype(std::get<sizeof...(Clauses)>(
+                    std::declval<std::tuple<Clause, Clauses...>>()))>;
+        }))) auto catch_exception_object(const dynamic_object & exception,
+                                         Clause && clause,
+                                         Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(!sizeof...(Clauses),
@@ -1477,7 +1623,8 @@ public:
      * for catch clauses that may themselves throw.
      */
     template <typename... Clauses>
-    inline throwing<Type> catches(Clauses && ... clauses) requires requires
+    inline throwing<Type, Allocator>
+    catches(Clauses &&... clauses) requires requires
     {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
@@ -1514,7 +1661,7 @@ public:
      * for catch clauses that do not throw.
      */
     template <typename... Clauses>
-    inline Type catches(Clauses && ... clauses) requires(!requires {
+    inline Type catches(Clauses &&... clauses) requires(!requires {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
             std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
@@ -1562,12 +1709,13 @@ auto try_catch(Clause && clause)
 }
 
 template <typename TryClause, typename... CatchClause>
-decltype(result(
-    std::declval<TryClause>()()).catches(std::declval<CatchClause>()...))
+decltype(result(std::declval<TryClause>()())
+             .catches(std::declval<CatchClause>()...))
 try_catch(TryClause && try_clause,
           CatchClause &&... catch_clause) requires(requires {
-    typename decltype(result(std::declval<TryClause>()()).catches(
-        std::declval<CatchClause>()...))::zpp_throwing_tag;
+    typename decltype(result(std::declval<TryClause>()())
+                          .catches(std::declval<
+                                   CatchClause>()...))::zpp_throwing_tag;
 })
 {
     if constexpr (requires {
@@ -1583,12 +1731,13 @@ try_catch(TryClause && try_clause,
 }
 
 template <typename TryClause, typename... CatchClause>
-decltype(result(
-    std::declval<TryClause>()()).catches(std::declval<CatchClause>()...))
+decltype(result(std::declval<TryClause>()())
+             .catches(std::declval<CatchClause>()...))
 try_catch(TryClause && try_clause,
           CatchClause &&... catch_clause) requires(!requires {
-    typename decltype(result(std::declval<TryClause>()()).catches(
-        std::declval<CatchClause>()...))::zpp_throwing_tag;
+    typename decltype(result(std::declval<TryClause>()())
+                          .catches(std::declval<
+                                   CatchClause>()...))::zpp_throwing_tag;
 })
 {
     if constexpr (requires {
