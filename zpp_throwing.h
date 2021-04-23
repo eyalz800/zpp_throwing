@@ -1561,6 +1561,48 @@ auto try_catch(Clause && clause)
     }
 }
 
+template <typename TryClause, typename... CatchClause>
+decltype(result(
+    std::declval<TryClause>()()).catches(std::declval<CatchClause>()...))
+try_catch(TryClause && try_clause,
+          CatchClause &&... catch_clause) requires(requires {
+    typename decltype(result(std::declval<TryClause>()()).catches(
+        std::declval<CatchClause>()...))::zpp_throwing_tag;
+})
+{
+    if constexpr (requires {
+                      typename std::invoke_result_t<
+                          TryClause>::zpp_throwing_tag;
+                  }) {
+        co_return co_await result(std::forward<TryClause>(try_clause)())
+            .catches(std::forward<CatchClause>(catch_clause)...);
+    } else {
+        static_assert(std::is_void_v<TryClause>,
+                      "Try clause must return throwing<Type>.");
+    }
+}
+
+template <typename TryClause, typename... CatchClause>
+decltype(result(
+    std::declval<TryClause>()()).catches(std::declval<CatchClause>()...))
+try_catch(TryClause && try_clause,
+          CatchClause &&... catch_clause) requires(!requires {
+    typename decltype(result(std::declval<TryClause>()()).catches(
+        std::declval<CatchClause>()...))::zpp_throwing_tag;
+})
+{
+    if constexpr (requires {
+                      typename std::invoke_result_t<
+                          TryClause>::zpp_throwing_tag;
+                  }) {
+        return result(std::forward<TryClause>(try_clause)())
+            .catches(std::forward<CatchClause>(catch_clause)...);
+    } else {
+        static_assert(std::is_void_v<TryClause>,
+                      "Try clause must return throwing<Type>.");
+    }
+}
+
 template <>
 struct define_exception<std::exception>
 {

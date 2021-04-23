@@ -69,6 +69,25 @@ In this example `foo` was called with `false`, and hence it throws the `std::run
 is caught at the first lambda function sent to `catches`. This lambda then returns `1` which eventually
 being returned from `main`.
 
+An abbreviated way of the above is to omit the `catches` like so:
+```cpp
+int main()
+{
+    return zpp::try_catch([]() -> zpp::throwing<int> {
+        std::cout << "Hello World\n";
+        std::cout << co_await foo(false) << '\n';;
+        co_return 0;
+    }, [&](const std::exception & error) {
+        std::cout << "std exception caught: " << error.what() << '\n';
+        return 1;
+    }, [&]() {
+        std::cout << "Unknown exception\n";
+        return 1;
+    });
+}
+```
+
+
 ### Throwing Exceptions From Within `catches`
 Like in normal catch block, it is possible to throw from the lambdas sent to `catches`:
 ```cpp
