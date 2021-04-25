@@ -610,7 +610,7 @@ inline void * dyn_cast(const void * base,
     }
 
     // No conversion was found.
-    return 0;
+    return nullptr;
 }
 
 template <typename Type>
