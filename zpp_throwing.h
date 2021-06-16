@@ -113,7 +113,7 @@ public:
         return reserved_storage<Size>::reserved(get());
     }
 
-    void reset(enum reserved_index) noexcept
+    void reset(enum reserved_index index) noexcept
     {
         base::reset(reserved_storage<Size>::template at<Type>(index));
     }
