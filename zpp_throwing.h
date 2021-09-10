@@ -123,12 +123,6 @@ public:
         reset();
         return *this;
     }
-
-    reserved_ptr & operator=(std::unique_ptr<Type> && other) noexcept
-    {
-        reset(other.release());
-        return *this;
-    }
 };
 
 template <typename Type, std::size_t Size, typename Allocator>
