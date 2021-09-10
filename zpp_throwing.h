@@ -1140,10 +1140,9 @@ public:
     {
         using Base::Base;
 
-        auto return_void()
+        void return_void()
         {
             Base::m_value.set_value();
-            return suspend_never{};
         }
 
         auto get_return_object()
@@ -1161,10 +1160,9 @@ public:
     {
         using Base::Base;
 
-        auto return_value(Type value)
+        void return_value(Type value)
         {
             Base::m_value.set_value(std::move(value));
-            return suspend_never{};
         }
 
         auto get_return_object()
