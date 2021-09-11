@@ -628,8 +628,12 @@ struct promised_value
     {
         if (other.has_value()) {
             if constexpr (!std::is_void_v<Type>) {
-                ::new (std::addressof(m_value))
-                    Type(std::move(other.m_value));
+                if constexpr (!std::is_reference_v<Type>) {
+                    ::new (std::addressof(m_value))
+                        Type(std::move(other.m_value));
+                } else {
+                    m_value = other.m_value;
+                }
             }
         } else {
             m_error_domain = other.m_error_domain;
@@ -748,7 +752,7 @@ struct promised_value
         return !has_value() && !has_exception();
     }
 
-    auto is_rethrow() const
+    auto is_rethrow() const noexcept
     {
         return has_exception() && m_exception == nullptr;
     }
@@ -758,7 +762,16 @@ struct promised_value
         return has_value();
     }
 
-    decltype(auto) value()
+    decltype(auto) value() && noexcept
+    {
+        if constexpr (std::is_same_v<Type, decltype(m_value)>) {
+            return std::forward<Type>(m_value);
+        } else {
+            return std::forward<Type>(*m_value);
+        }
+    }
+
+    decltype(auto) value() & noexcept
     {
         if constexpr (std::is_same_v<Type, decltype(m_value)>) {
             return (m_value);
@@ -790,7 +803,12 @@ struct promised_value
         }
 
         if constexpr (!std::is_void_v<Type>) {
-            ::new (&m_value) Type(std::forward<decltype(other)>(other));
+            if constexpr (!std::is_reference_v<Type>) {
+                ::new (std::addressof(m_value))
+                    Type(std::forward<decltype(other)>(other));
+            } else {
+                m_value = std::addressof(other);
+            }
         }
         m_error_domain = nullptr;
     }
@@ -899,7 +917,13 @@ struct promised_value
     {
         int m_error_code{};
         ExceptionType m_exception;
-        std::conditional_t<std::is_void_v<Type>, std::nullptr_t, Type>
+        std::conditional_t<
+            std::is_void_v<Type>,
+            std::nullptr_t,
+            std::conditional_t<
+                std::is_reference_v<Type>,
+                std::add_pointer_t<std::remove_reference_t<Type>>,
+                Type>>
             m_value;
     };
 };
@@ -1132,9 +1156,10 @@ public:
     {
         using Base::Base;
 
-        void return_value(Type value)
+        template <typename T>
+        void return_value(T && value)
         {
-            Base::m_value.set_value(std::move(value));
+            Base::m_value.set_value(std::forward<T>(value));
         }
 
         auto get_return_object()
@@ -1235,12 +1260,12 @@ public:
     /**
      * Return the stored value on resume.
      */
-    auto await_resume() noexcept
+    decltype(auto) await_resume() noexcept
     {
         if constexpr (std::is_void_v<Type>) {
             return;
         } else {
-            return std::move(m_handle.promise().value().value());
+            return std::move(m_handle.promise().value()).value();
         }
     }
 
@@ -1348,7 +1373,7 @@ public:
         if constexpr (std::is_void_v<Type>) {
             return;
         } else {
-            return std::move(m_value.value());
+            return std::move(m_value).value();
         }
     }
 
