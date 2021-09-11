@@ -350,13 +350,8 @@ it is not recommended to use it in a project where exceptions are enabled.
 2. Because coroutines cannot work with constructors, it means that an exception
 cannot propagate from constructors natively, and it needs to be worked around, through a parameter
 to the constructor or other means such as factory functions.
-3. Throwing values only supports error values between 0 and 254 (`throwing<T>::error_code_max`). The reason for
-that is to try and keep `sizeof(zpp::throwing<void *>::promise_tyoe) == 2 * sizeof(void *)` 
-(i.e, the promise type for a return value of pointer size, is twice the size of pointer) The feature that
-is being used for that will also create a global const variable of size 256 bytes. For
-more info about this hack see `zpp::detail::reserved_ptr`.
-4. The code has gone only through very minimal testing, with recent clang compiler.
-5. The code requires `C++20` and above.
+3. The code has gone only through very minimal testing, with recent clang compiler.
+4. The code requires `C++20` and above.
 
 Final Word
 ----------

@@ -17,204 +17,6 @@
 
 namespace zpp
 {
-namespace detail
-{
-enum reserved_index : std::size_t;
-
-template <std::size_t Size>
-struct reserved_storage
-{
-    static constexpr bool reserved(void * pointer) noexcept
-    {
-        return (std::begin(storage) <= pointer &&
-                pointer < std::end(storage));
-    }
-
-    template <typename Type>
-    static auto at(enum reserved_index index) noexcept
-    {
-        return const_cast<std::remove_const_t<Type *>>(
-            reinterpret_cast<std::add_const_t<Type> *>(
-                std::begin(storage) + index));
-    }
-
-    static auto reserved_index(auto pointer) noexcept
-    {
-        return (
-            enum reserved_index)(reinterpret_cast<const char *>(pointer) -
-                                 std::begin(storage));
-    }
-
-    constexpr static char storage[Size]{};
-};
-
-template <typename Type, std::size_t Size, typename Allocator = void>
-struct reserved_delete
-{
-    void operator()(Type * pointer)
-    {
-        if (!reserved_storage<Size>::reserved(pointer)) {
-            if constexpr (std::is_void_v<Allocator>) {
-                delete pointer;
-            } else {
-                Allocator allocator;
-                std::allocator_traits<Allocator>::destroy(allocator,
-                                                          pointer);
-                std::allocator_traits<Allocator>::deallocate(
-                    allocator,
-                    reinterpret_cast<std::byte *>(pointer),
-                    sizeof(*pointer));
-            }
-        }
-    }
-};
-
-template <typename Type, std::size_t Size, typename Allocator = void>
-requires(!std::is_array_v<Type>) class reserved_ptr
-    : private std::unique_ptr<Type, reserved_delete<Type, Size, Allocator>>
-{
-public:
-    using base =
-        std::unique_ptr<Type, reserved_delete<Type, Size, Allocator>>;
-    using base::base;
-    using base::get;
-    using base::release;
-    using base::reset;
-    using base::operator*;
-    using base::operator->;
-    friend auto operator<=>(const reserved_ptr &,
-                            const reserved_ptr &) = default;
-
-    reserved_ptr(reserved_index index) :
-        base(reserved_storage<Size>::template at<Type>(index))
-    {
-    }
-
-    template <typename OtherType>
-    requires std::is_convertible_v<std::add_pointer_t<OtherType>,
-                                   std::add_pointer_t<Type>>
-    reserved_ptr(reserved_ptr<OtherType, Size, Allocator> && other) :
-        base(other.release())
-    {
-    }
-
-    constexpr explicit operator bool() const noexcept
-    {
-        return get() != nullptr && !reserved();
-    }
-
-    auto reserved_index() const noexcept
-    {
-        return reserved_storage<Size>::reserved_index(get());
-    }
-
-    constexpr bool reserved() const noexcept
-    {
-        return reserved_storage<Size>::reserved(get());
-    }
-
-    void reset(enum reserved_index index) noexcept
-    {
-        base::reset(reserved_storage<Size>::template at<Type>(index));
-    }
-
-    reserved_ptr & operator=(std::nullptr_t) noexcept
-    {
-        reset();
-        return *this;
-    }
-};
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto operator==(const reserved_ptr<Type, Size, Allocator> & left,
-                          std::nullptr_t) noexcept
-{
-    return left.get() == nullptr;
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto
-operator==(std::nullptr_t,
-           const reserved_ptr<Type, Size, Allocator> & right) noexcept
-{
-    return right.get() == nullptr;
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto operator!=(const reserved_ptr<Type, Size, Allocator> & left,
-                          std::nullptr_t) noexcept
-{
-    return left.get() != nullptr;
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto
-operator!=(std::nullptr_t,
-           const reserved_ptr<Type, Size, Allocator> & right) noexcept
-{
-    return right.get() != nullptr;
-}
-
-template <typename Type, std::size_t Size, typename Allocator = void>
-auto make_reserved(auto &&... arguments)
-{
-    if constexpr (std::is_void_v<Allocator>) {
-        return reserved_ptr<Type, Size, Allocator>(
-            new Type(std::forward<decltype(arguments)>(arguments)...));
-    } else {
-        Allocator allocator;
-        auto allocated = std::allocator_traits<Allocator>::allocate(
-            allocator, sizeof(Type));
-        if (!allocated) {
-            return reserved_ptr<Type, Size, Allocator>(nullptr);
-        }
-
-        std::allocator_traits<Allocator>::construct(
-            allocator,
-            reinterpret_cast<Type *>(allocated),
-            std::forward<decltype(arguments)>(arguments)...);
-
-        return reserved_ptr<Type, Size, Allocator>(allocated);
-    }
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto operator==(const reserved_ptr<Type, Size, Allocator> & left,
-                          reserved_index right) noexcept
-{
-    return left.reserved() && left.reserved_index() == right;
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto
-operator==(reserved_index left,
-           const reserved_ptr<Type, Size, Allocator> & right) noexcept
-{
-    return right.reserved() && right.reserved_index() == left;
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto operator!=(const reserved_ptr<Type, Size, Allocator> & left,
-                          reserved_index right) noexcept
-{
-    return !(left == right);
-}
-
-template <typename Type, std::size_t Size, typename Allocator>
-constexpr auto
-operator!=(reserved_index left,
-           const reserved_ptr<Type, Size, Allocator> & right) noexcept
-{
-    return !(left == right);
-}
-
-template <typename Type, std::size_t Size>
-auto make_reserved(reserved_index index)
-{
-    return reserved_ptr<Type, Size>(index);
-}
-} // namespace detail
-
 /**
  * User defined error domain.
  */
@@ -459,6 +261,34 @@ using suspend_never = std::experimental::suspend_never;
 #endif
 
 /**
+ * Determine the throwing state via error domain placeholders.
+ * @{
+ */
+enum class throwing_error
+{
+};
+
+template <>
+inline constexpr auto err_domain<throwing_error> = zpp::make_error_domain(
+    {}, throwing_error{}, [](auto) constexpr->std::string_view {
+        return {};
+    });
+
+enum class throwing_exception
+{
+};
+
+template <>
+inline constexpr auto err_domain<throwing_exception> =
+    zpp::make_error_domain(
+        {}, throwing_exception{}, [](auto) constexpr->std::string_view {
+            return {};
+        });
+/**
+ * @}
+ */
+
+/**
  * Yield `rethrow` for rethrowing exceptions.
  */
 struct rethrow_t
@@ -520,6 +350,51 @@ struct define_exception;
 
 template <typename Type>
 using define_exception_t = typename define_exception<Type>::type;
+
+template <typename Type, typename Allocator = void>
+struct exception_ptr_delete
+{
+    void operator()(Type * pointer)
+    {
+        if constexpr (std::is_void_v<Allocator>) {
+            delete pointer;
+        } else {
+            Allocator allocator;
+            std::allocator_traits<Allocator>::destroy(allocator, pointer);
+            std::allocator_traits<Allocator>::deallocate(
+                allocator,
+                reinterpret_cast<std::byte *>(pointer),
+                sizeof(*pointer));
+        }
+    }
+};
+
+template <typename Type, typename Allocator>
+using exception_ptr =
+    std::unique_ptr<Type, exception_ptr_delete<Type, Allocator>>;
+
+template <typename Type, typename Allocator>
+auto make_exception_ptr(auto &&... arguments)
+{
+    if constexpr (std::is_void_v<Allocator>) {
+        return exception_ptr<exception_object, Allocator>(
+            new Type(std::forward<decltype(arguments)>(arguments)...));
+    } else {
+        Allocator allocator;
+        auto allocated = std::allocator_traits<Allocator>::allocate(
+            allocator, sizeof(Type));
+        if (!allocated) {
+            return exception_ptr<Type, Allocator>(nullptr);
+        }
+
+        std::allocator_traits<Allocator>::construct(
+            allocator,
+            reinterpret_cast<Type *>(allocated),
+            std::forward<decltype(arguments)>(arguments)...);
+
+        return exception_ptr<exception_object, Allocator>(allocated);
+    }
+}
 
 namespace detail
 {
@@ -738,32 +613,37 @@ using catch_value_type_t = typename catch_value_type<Type>::type;
 } // namespace detail
 
 /**
- * Maximum value of an error code.
- */
-static constexpr auto error_code_max = 255 - 1 /* reserved */;
-
-/**
  * The promise stored value.
  */
-template <typename Type, typename Allocator = void>
+template <typename Type, typename ExceptionType, typename Allocator>
 struct promised_value
 {
-    promised_value() : m_error_domain()
+    promised_value() :
+        m_error_domain(std::addressof(err_domain<throwing_error>))
     {
     }
 
     promised_value(promised_value && other) noexcept(
         std::is_void_v<Type> || std::is_nothrow_move_constructible_v<Type>)
     {
-        if (other.m_error_state == value_index) {
+        if (other.has_value()) {
             if constexpr (!std::is_void_v<Type>) {
                 ::new (std::addressof(m_value))
                     Type(std::move(other.m_value));
             }
-            m_error_state = value_index;
         } else {
-            m_error_state = std::move(other.m_error_state);
             m_error_domain = other.m_error_domain;
+            if (other.has_exception()) {
+                if constexpr (std::is_trivially_destructible_v<
+                                  ExceptionType>) {
+                    m_exception = other.m_exception;
+                } else {
+                    ::new (std::addressof(m_exception))
+                        ExceptionType(std::move(other.m_exception));
+                }
+            } else {
+                m_error_code = other.m_error_code;
+            }
         }
     }
 
@@ -776,20 +656,52 @@ struct promised_value
             return *this;
         }
 
-        if (other.m_error_state == value_index) {
-            if (m_error_state == value_index) {
+        if (other.has_value()) {
+            if (has_value()) {
                 if constexpr (!std::is_void_v<Type>) {
                     m_value = std::move(other.m_value);
                 }
             } else {
+                if constexpr (!std::is_trivially_destructible_v<
+                                  ExceptionType>) {
+                    if (has_exception()) {
+                        m_exception.~ExceptionType();
+                    }
+                }
                 if constexpr (!std::is_void_v<Type>) {
                     ::new (std::addressof(m_value))
                         Type(std::move(other.m_value));
                 }
-                m_error_state = value_index;
+                m_error_domain = nullptr;
             }
         } else {
-            m_error_state = std::move(other.m_error_state);
+            if constexpr (!std::is_void_v<Type> &&
+                          !std::is_trivially_destructible_v<Type>) {
+                if (has_value()) {
+                    m_value.~Type();
+                }
+            }
+            if (other.has_exception()) {
+                if constexpr (std::is_trivially_destructible_v<
+                                  ExceptionType>) {
+                    m_exception = other.m_exception;
+                } else {
+                    if (has_exception()) {
+                        m_exception = std::move(other.m_exception);
+                    } else {
+                        ::new (std::addressof(m_exception))
+                            ExceptionType(std::move(other.m_exception));
+                    }
+                }
+            } else {
+                if constexpr (!std::is_trivially_destructible_v<
+                                  ExceptionType>) {
+                    if (has_exception()) {
+                        m_exception.~ExceptionType();
+                    }
+                }
+                m_error_code = other.m_error_code;
+            }
             m_error_domain = other.m_error_domain;
         }
 
@@ -798,24 +710,52 @@ struct promised_value
 
     ~promised_value()
     {
-        if (m_error_state == value_index) {
-            if constexpr (!std::is_void_v<Type> &&
-                          !std::is_trivially_destructible_v<Type>) {
-                m_value.~Type();
+        if constexpr (!std::is_void_v<Type> &&
+                      !std::is_trivially_destructible_v<Type>) {
+            if constexpr (!std::is_trivially_destructible_v<
+                              ExceptionType>) {
+                if (has_value()) {
+                    m_value.~Type();
+                } else if (has_exception()) {
+                    m_exception.~ExceptionType();
+                }
+            } else {
+                if (has_value()) {
+                    m_value.~Type();
+                }
+            }
+        } else if constexpr (!std::is_trivially_destructible_v<
+                                 ExceptionType>) {
+            if (has_exception()) {
+                m_exception.~ExceptionType();
             }
         }
     }
 
-    promised_value(const promised_value &) = delete;
+    bool has_exception() const noexcept
+    {
+        return m_error_domain ==
+               std::addressof(err_domain<throwing_exception>);
+    }
+
+    bool has_value() const noexcept
+    {
+        return !m_error_domain;
+    }
+
+    bool has_error() const noexcept
+    {
+        return !has_value() && !has_exception();
+    }
+
+    auto is_rethrow() const
+    {
+        return has_exception() && m_exception == nullptr;
+    }
 
     explicit operator bool() const noexcept
     {
-        return m_error_state == value_index;
-    }
-
-    bool has_exception() const noexcept
-    {
-        return static_cast<bool>(m_error_state);
+        return has_value();
     }
 
     decltype(auto) value()
@@ -827,57 +767,107 @@ struct promised_value
         }
     }
 
+    auto & exception() noexcept
+    {
+        return *m_exception;
+    }
+
+    error get_error() const noexcept
+    {
+        return error(m_error_code, *m_error_domain);
+    }
+
     /**
-     * Sets a value. `this` should not hold a value.
+     * Sets a value. `this` must not already hold a value.
      */
     template <typename..., typename Dependent = Type>
     void set_value(auto && other) requires(!std::is_void_v<Dependent>)
     {
+        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
+            if (has_exception()) {
+                m_exception.~ExceptionType();
+            }
+        }
+
         if constexpr (!std::is_void_v<Type>) {
             ::new (&m_value) Type(std::forward<decltype(other)>(other));
         }
-        m_error_state = value_index;
+        m_error_domain = nullptr;
     }
 
     template <typename..., typename Dependent = Type>
     void set_value() requires std::is_void_v<Dependent>
     {
-        m_error_state = value_index;
-    }
-
-    auto & exception() noexcept
-    {
-        return *m_error_state;
-    }
-
-    auto is_rethrow() const
-    {
-        return m_error_state == nullptr;
-    }
-
-    void rethrow()
-    {
-        m_error_state = nullptr;
+        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
+            if (has_exception()) {
+                m_exception.~ExceptionType();
+            }
+        }
+        m_error_domain = nullptr;
     }
 
     /**
-     * Sets an error value, error must not be larger than  `error_code_max,
-     * and `this` should not hold a value.
+     * Sets an exception object. `this` should not hold a value or
+     * an exception.
+     */
+    auto set_exception(ExceptionType exception) noexcept
+    {
+        if constexpr (std::is_trivially_destructible_v<ExceptionType>) {
+            m_exception = exception;
+            m_error_domain =
+                std::addressof(err_domain<throwing_exception>);
+        } else {
+            if (!has_exception()) {
+                ::new (std::addressof(m_exception))
+                    ExceptionType(std::move(exception));
+                m_error_domain =
+                    std::addressof(err_domain<throwing_exception>);
+            } else {
+                m_exception = std::move(exception);
+            }
+        }
+
+        if constexpr (std::is_void_v<Allocator>) {
+            // Nothing to be done.
+
+        } else if constexpr (noexcept(std::declval<Allocator>().allocate(
+                                 std::size_t{}))) {
+            if constexpr (!std::is_trivially_destructible_v<
+                              ExceptionType>) {
+                m_exception.~ExceptionType();
+            }
+
+            if (m_exception == nullptr) {
+                set_error(std::errc::not_enough_memory);
+            }
+        }
+    }
+
+    /**
+     * This must not hold a value or an exception.
+     */
+    void rethrow() noexcept
+    {
+        if constexpr (std::is_trivially_destructible_v<ExceptionType>) {
+            m_exception = nullptr;
+        } else {
+            ::new (std::addressof(m_exception)) ExceptionType();
+        }
+        m_error_domain = std::addressof(err_domain<throwing_exception>);
+    }
+
+    /**
+     * Sets an error value, `this` must not hold a value.
      */
     void set_error(const error & error) noexcept
     {
-        auto code = error.code();
-        if (code > error_code_max) {
-            code = error_code_max;
+        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
+            if (has_exception()) {
+                m_exception.~ExceptionType();
+            }
         }
-        m_error_state = detail::reserved_index(reserved_indices + code);
-        m_error_domain = &error.domain();
-    }
-
-    error get_error() const noexcept
-    {
-        return error(m_error_state.reserved_index() - reserved_indices,
-                     *m_error_domain);
+        m_error_domain = std::addressof(error.domain());
+        m_error_code = error.code();
     }
 
     /**
@@ -886,44 +876,29 @@ struct promised_value
      */
     void propagate(auto && other) noexcept
     {
-        m_error_state = std::move(other.m_error_state);
+        if (other.has_exception()) {
+            if constexpr (std::is_trivially_destructible_v<
+                              ExceptionType>) {
+                m_exception = other.m_exception;
+            } else {
+                if (!has_exception()) {
+                    ::new (std::addressof(m_exception))
+                        ExceptionType(std::move(other.m_exception));
+                } else {
+                    m_exception = std::move(other.m_exception);
+                }
+            }
+        } else {
+            m_error_code = other.m_error_code;
+        }
         m_error_domain = other.m_error_domain;
     }
 
-    /**
-     * Sets an exception object. `this` should not hold a value.
-     */
-    template <typename Exception>
-    auto emplace_exception(auto &&... arguments)
-    {
-        m_error_state =
-            detail::make_reserved<Exception,
-                                  reserved_indices + error_code_max + 1,
-                                  Allocator>(
-                std::forward<decltype(arguments)>(arguments)...);
-
-        if constexpr (std::is_void_v<Allocator>) {
-            // Nothing to be done.
-
-        } else if constexpr (noexcept(std::declval<Allocator>().allocate(
-                                 std::size_t{}))) {
-            if (m_error_state == nullptr) {
-                set_error(std::errc::not_enough_memory);
-            }
-        }
-    }
-
-    static constexpr auto value_index = detail::reserved_index(0);
-    static constexpr auto reserved_indices = 1;
-
-    detail::reserved_ptr<exception_object,
-                         reserved_indices + error_code_max + 1,
-                         Allocator>
-        m_error_state;
-
+    const error_domain * m_error_domain{};
     union
     {
-        const error_domain * m_error_domain{};
+        int m_error_code{};
+        ExceptionType m_exception;
         std::conditional_t<std::is_void_v<Type>, std::nullptr_t, Type>
             m_value;
     };
@@ -1013,8 +988,8 @@ public:
                 type m_value;
             };
 
-            m_value.template emplace_exception<exception>(
-                std::forward<Value>(value));
+            m_value.set_exception(make_exception_ptr<exception, Allocator>(
+                std::forward<Value>(value)));
             return suspend_always{};
         }
 
@@ -1076,7 +1051,10 @@ public:
 
         ~basic_promise_type() = default;
 
-        promised_value<Type, Allocator> m_value{};
+        promised_value<Type,
+                       exception_ptr<exception_object, Allocator>,
+                       Allocator>
+            m_value{};
     };
 
     template <typename Base>
@@ -1284,7 +1262,10 @@ private:
     {
         if constexpr (is_noexcept_allocator) {
             if (!m_handle) {
-                promised_value<Type, Allocator> promised_value;
+                promised_value<Type,
+                               exception_ptr<exception_object, Allocator>,
+                               Allocator>
+                    promised_value;
                 promised_value.set_error(std::errc::not_enough_memory);
                 return promised_value;
             }
@@ -1302,7 +1283,10 @@ private:
 template <typename Type, typename Allocator = void>
 class [[nodiscard]] result
 {
-    promised_value<Type, Allocator> m_value{};
+    promised_value<Type,
+                   exception_ptr<exception_object, Allocator>,
+                   Allocator>
+        m_value{};
 
 public:
     template <typename, typename>
