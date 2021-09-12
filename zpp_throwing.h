@@ -1691,7 +1691,7 @@ try_catch(TryClause && try_clause,
                       typename std::invoke_result_t<
                           TryClause>::zpp_throwing_tag;
                   }) {
-        co_return co_await result(std::forward<TryClause>(try_clause)())
+        co_return co_await try_catch(std::forward<TryClause>(try_clause))
             .catches(std::forward<CatchClause>(catch_clause)...);
     } else {
         static_assert(std::is_void_v<TryClause>,
@@ -1713,7 +1713,7 @@ try_catch(TryClause && try_clause,
                       typename std::invoke_result_t<
                           TryClause>::zpp_throwing_tag;
                   }) {
-        return result(std::forward<TryClause>(try_clause)())
+        return try_catch(std::forward<TryClause>(try_clause))
             .catches(std::forward<CatchClause>(catch_clause)...);
     } else {
         static_assert(std::is_void_v<TryClause>,
