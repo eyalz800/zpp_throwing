@@ -296,14 +296,6 @@ struct rethrow_t
 };
 constexpr rethrow_t rethrow;
 
-/**
- * Set the current exception without throwing it, for internal use.
- */
-struct set_current_exception_t
-{
-};
-constexpr set_current_exception_t set_current_exception;
-
 struct dynamic_object
 {
     const void * type_id{};
@@ -636,7 +628,6 @@ struct promised_value
                 }
             }
         } else {
-            m_error_domain = other.m_error_domain;
             if (other.has_exception()) {
                 if constexpr (std::is_trivially_destructible_v<
                                   ExceptionType>) {
@@ -648,6 +639,7 @@ struct promised_value
             } else {
                 m_error_code = other.m_error_code;
             }
+            m_error_domain = other.m_error_domain;
         }
     }
 
@@ -754,7 +746,7 @@ struct promised_value
 
     auto is_rethrow() const noexcept
     {
-        return has_exception() && m_exception == nullptr;
+        return has_exception() && !m_exception;
     }
 
     explicit operator bool() const noexcept
@@ -791,17 +783,11 @@ struct promised_value
     }
 
     /**
-     * Sets a value. `this` must not already hold a value.
+     * Sets a value. `this` must not already hold a value or exception.
      */
     template <typename..., typename Dependent = Type>
     void set_value(auto && other) requires(!std::is_void_v<Dependent>)
     {
-        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
-            if (has_exception()) {
-                m_exception.~ExceptionType();
-            }
-        }
-
         if constexpr (!std::is_void_v<Type>) {
             if constexpr (!std::is_reference_v<Type>) {
                 ::new (std::addressof(m_value))
@@ -816,11 +802,6 @@ struct promised_value
     template <typename..., typename Dependent = Type>
     void set_value() requires std::is_void_v<Dependent>
     {
-        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
-            if (has_exception()) {
-                m_exception.~ExceptionType();
-            }
-        }
         m_error_domain = nullptr;
     }
 
@@ -832,30 +813,20 @@ struct promised_value
     {
         if constexpr (std::is_trivially_destructible_v<ExceptionType>) {
             m_exception = exception;
-            m_error_domain =
-                std::addressof(err_domain<throwing_exception>);
         } else {
-            if (!has_exception()) {
-                ::new (std::addressof(m_exception))
-                    ExceptionType(std::move(exception));
-                m_error_domain =
-                    std::addressof(err_domain<throwing_exception>);
-            } else {
-                m_exception = std::move(exception);
-            }
+            ::new (std::addressof(m_exception))
+                ExceptionType(std::move(exception));
         }
+
+        m_error_domain =
+            std::addressof(err_domain<throwing_exception>);
 
         if constexpr (std::is_void_v<Allocator>) {
             // Nothing to be done.
 
         } else if constexpr (noexcept(std::declval<Allocator>().allocate(
                                  std::size_t{}))) {
-            if constexpr (!std::is_trivially_destructible_v<
-                              ExceptionType>) {
-                m_exception.~ExceptionType();
-            }
-
-            if (m_exception == nullptr) {
+            if (!m_exception) {
                 set_error(std::errc::not_enough_memory);
             }
         }
@@ -867,7 +838,7 @@ struct promised_value
     void rethrow() noexcept
     {
         if constexpr (std::is_trivially_destructible_v<ExceptionType>) {
-            m_exception = nullptr;
+            m_exception = {};
         } else {
             ::new (std::addressof(m_exception)) ExceptionType();
         }
@@ -875,22 +846,17 @@ struct promised_value
     }
 
     /**
-     * Sets an error value, `this` must not hold a value.
+     * Sets an error value, `this` must not hold a value or an exception.
      */
     void set_error(const error & error) noexcept
     {
-        if constexpr (!std::is_trivially_destructible_v<ExceptionType>) {
-            if (has_exception()) {
-                m_exception.~ExceptionType();
-            }
-        }
         m_error_domain = std::addressof(error.domain());
         m_error_code = error.code();
     }
 
     /**
      * Propagates an exception/error value, both this and other must
-     * have no value stored.
+     * have no value stored, and this should not hold an exception.
      */
     void propagate(auto && other) noexcept
     {
@@ -899,12 +865,8 @@ struct promised_value
                               ExceptionType>) {
                 m_exception = other.m_exception;
             } else {
-                if (!has_exception()) {
-                    ::new (std::addressof(m_exception))
-                        ExceptionType(std::move(other.m_exception));
-                } else {
-                    m_exception = std::move(other.m_exception);
-                }
+                ::new (std::addressof(m_exception))
+                    ExceptionType(std::move(other.m_exception));
             }
         } else {
             m_error_code = other.m_error_code;
@@ -1015,17 +977,6 @@ public:
             m_value.set_exception(make_exception_ptr<exception, Allocator>(
                 std::forward<Value>(value)));
             return suspend_always{};
-        }
-
-        /**
-         * Sets the current exception for rethrow purposes.
-         */
-        template <typename Exception>
-        auto yield_value(std::tuple<const set_current_exception_t &,
-                                    Exception &> exception)
-        {
-            m_value.propagate(std::get<1>(exception));
-            return suspend_never{};
         }
 
         /**
@@ -1361,7 +1312,7 @@ public:
         if (!m_value) {
             co_yield std::tie(rethrow, m_value);
         }
-        co_return std::move(m_value.value());
+        co_return std::move(m_value).value();
     }
 
     /**
@@ -1447,8 +1398,13 @@ private:
             static_assert(0 == sizeof...(Clauses),
                           "Catch all clause must be the last one.");
             if constexpr (IsThrowing) {
-                co_yield std::tie(set_current_exception, m_value);
-                co_return co_await std::forward<Clause>(clause)();
+                result catch_result = std::forward<Clause>(clause)();
+                if (catch_result.is_rethrow()) [[unlikely]] {
+                    co_yield std::tie(rethrow, m_value);
+                } else if (!catch_result) [[unlikely]] {
+                    co_yield std::tie(rethrow, catch_result.promised());
+                }
+                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)();
             }
@@ -1478,8 +1434,13 @@ private:
 
             if constexpr (IsThrowing) {
                 auto error = m_value.get_error();
-                co_yield std::tie(set_current_exception, m_value);
-                co_return co_await std::forward<Clause>(clause)(error);
+                result catch_result = std::forward<Clause>(clause)(error);
+                if (catch_result.is_rethrow()) [[unlikely]] {
+                    co_yield std::tie(rethrow, m_value);
+                } else if (!catch_result) [[unlikely]] {
+                    co_yield std::tie(rethrow, catch_result.promised());
+                }
+                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)(
                     m_value.get_error());
@@ -1514,9 +1475,13 @@ private:
             }
 
             if constexpr (IsThrowing) {
-                co_yield std::tie(set_current_exception, m_value);
-                co_return co_await std::forward<Clause>(clause)(
-                    *catch_object);
+                result catch_result = std::forward<Clause>(clause)(*catch_object);
+                if (catch_result.is_rethrow()) [[unlikely]] {
+                    co_yield std::tie(rethrow, m_value);
+                } else if (!catch_result) [[unlikely]] {
+                    co_yield std::tie(rethrow, catch_result.promised());
+                }
+                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)(*catch_object);
             }
@@ -1611,6 +1576,22 @@ private:
 
             return std::forward<Clause>(clause)(*catch_object);
         }
+    }
+
+    /**
+     * Returns true if rethrowing, else false.
+     */
+    bool is_rethrow() const noexcept
+    {
+        return m_value.is_rethrow();
+    }
+
+    /**
+     * Returns the promised value.
+     */
+    auto & promised() noexcept
+    {
+        return m_value;
     }
 
 public:
