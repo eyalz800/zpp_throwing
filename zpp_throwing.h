@@ -956,7 +956,8 @@ public:
         template <typename Value>
         auto yield_value(Value && value) requires requires
         {
-            define_exception<std::remove_reference_t<Value>>();
+            define_exception<
+                std::remove_cv_t<std::remove_reference_t<Value>>>();
         }
         {
             using type = std::remove_cv_t<std::remove_reference_t<Value>>;
