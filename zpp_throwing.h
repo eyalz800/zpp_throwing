@@ -309,8 +309,6 @@ class exception_object
 {
 public:
     virtual struct dynamic_object dynamic_object() noexcept = 0;
-    virtual void move_construct(void * target) noexcept = 0;
-    virtual void move_assign(exception_object & target) noexcept = 0;
     virtual ~exception_object() = 0;
 
     static constexpr struct dynamic_object null_dynamic_object = {};
@@ -951,19 +949,6 @@ public:
                     // address.
                     return {detail::type_id<type>(),
                             std::addressof(m_value)};
-                }
-
-                void
-                move_construct(void * target) noexcept override
-                {
-                    ::new (target) exception(std::move(m_value));
-                }
-
-                void
-                move_assign(exception_object & target) noexcept override
-                {
-                    static_cast<exception &>(target).m_value =
-                        std::move(m_value);
                 }
 
                 ~exception() override = default;
