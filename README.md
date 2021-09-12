@@ -287,6 +287,36 @@ this value makes `a_foo` a normal function, and as such does not require allocat
 coroutine state object. `zpp::result<Type>` exposes `operator co_await` to be able to get the
 value or throw if there is a stored exception/error within.
 
+### Throwing Exceptions with `co_yield` vs `co_return`
+There are really two options the library offers to throw an exception, and you can actually
+throw also with `co_return`. The library will understand whether you are actually returning
+a value or throwing, by the type of the return expression.
+
+What you need to know is that `co_return` seems to generate less code because it cannot be resumed,
+but it cannot be used for `zpp::throwing<void>`. If you want to throw exceptions with `co_return`
+in void returning functions, use `zpp::throwing<zpp::void_t>` instead, and `co_return zpp::void_v`.
+
+Example:
+```cpp
+zpp::throwing<int> foo(bool success)
+{
+    if (!success) {
+        // Throws an exception, with `co_return`.
+        co_return std::runtime_error("My runtime error");
+    }
+
+    // ...
+
+    if (!success) {
+        // Throwing values with `co_return` is also possible.
+        co_return std::errc::invalid_argument;
+    }
+
+    // Returns a value.
+    co_return 1337;
+}
+```
+
 ### Fully-Working Example
 As a final example, here is a full program to play with:
 ```cpp

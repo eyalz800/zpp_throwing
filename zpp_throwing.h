@@ -296,6 +296,14 @@ struct rethrow_t
 };
 constexpr rethrow_t rethrow;
 
+/**
+ * Return void for void returning coroutines.
+ */
+struct void_t
+{
+};
+constexpr void_t void_v;
+
 struct dynamic_object
 {
     const void * type_id{};
@@ -886,11 +894,13 @@ struct promised_value
 
 /**
  * Use as the return type of the function, throw exceptions
- * by using `co_yield`, call throwing functions by `co_await`, and
- * return values using `co_return`.
- *
- * Use the `zpp::try_catch` function to execute a function object and then
- * to catch exceptions thrown from it.
+ * by using `co_yield / co_return` (`co_return` seems to generate less
+ * code because it cannot be resumed, but it cannot be used for
+ * `zpp::throwing<void>`. If you want to throw exceptions using `co_return`
+ * in void returning functions, use `zpp::throwing<zpp::void_t>` instead,
+ * and `co_return zpp::void_v`), Call throwing functions by `co_await`, and
+ * return values using `co_return`. Use the `zpp::try_catch` function to
+ * execute a function object and then to catch exceptions thrown from it.
  */
 template <typename Type, typename Allocator = void>
 class [[nodiscard]] throwing
@@ -1097,7 +1107,13 @@ public:
         template <typename T>
         void return_value(T && value)
         {
-            Base::m_value.set_value(std::forward<T>(value));
+            if constexpr (requires {
+                              Base::yield_value(std::forward<T>(value));
+                          }) {
+                Base::yield_value(std::forward<T>(value));
+            } else {
+                Base::m_value.set_value(std::forward<T>(value));
+            }
         }
 
         auto get_return_object()
@@ -1297,7 +1313,7 @@ public:
     throwing<Type, Allocator> operator co_await() noexcept
     {
         if (!m_value) {
-            co_yield std::tie(rethrow, m_value);
+            co_return std::tie(rethrow, m_value);
         }
         co_return std::move(m_value).value();
     }
@@ -1386,12 +1402,13 @@ private:
                           "Catch all clause must be the last one.");
             if constexpr (IsThrowing) {
                 result catch_result = std::forward<Clause>(clause)();
-                if (catch_result.is_rethrow()) [[unlikely]] {
-                    co_yield std::tie(rethrow, m_value);
-                } else if (!catch_result) [[unlikely]] {
-                    co_yield std::tie(rethrow, catch_result.promised());
+                if (catch_result) {
+                    co_return std::move(catch_result).value();
+                } else if (!catch_result.is_rethrow()) {
+                    co_return std::tie(rethrow, catch_result.promised());
+                } else {
+                    co_return std::tie(rethrow, m_value);
                 }
-                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)();
             }
@@ -1415,19 +1432,20 @@ private:
                             exception, std::forward<Clauses>(clauses)...);
                     }
                 } else {
-                    co_yield std::tie(rethrow, m_value);
+                    co_return std::tie(rethrow, m_value);
                 }
             }
 
             if constexpr (IsThrowing) {
                 auto error = m_value.get_error();
                 result catch_result = std::forward<Clause>(clause)(error);
-                if (catch_result.is_rethrow()) [[unlikely]] {
-                    co_yield std::tie(rethrow, m_value);
-                } else if (!catch_result) [[unlikely]] {
-                    co_yield std::tie(rethrow, catch_result.promised());
+                if (catch_result) {
+                    co_return std::move(catch_result).value();
+                } else if (!catch_result.is_rethrow()) {
+                    co_return std::tie(rethrow, catch_result.promised());
+                } else {
+                    co_return std::tie(rethrow, m_value);
                 }
-                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)(
                     m_value.get_error());
@@ -1457,18 +1475,19 @@ private:
                             exception, std::forward<Clauses>(clauses)...);
                     }
                 } else {
-                    co_yield std::tie(rethrow, m_value);
+                    co_return std::tie(rethrow, m_value);
                 }
             }
 
             if constexpr (IsThrowing) {
                 result catch_result = std::forward<Clause>(clause)(*catch_object);
-                if (catch_result.is_rethrow()) [[unlikely]] {
-                    co_yield std::tie(rethrow, m_value);
-                } else if (!catch_result) [[unlikely]] {
-                    co_yield std::tie(rethrow, catch_result.promised());
+                if (catch_result) {
+                    co_return std::move(catch_result).value();
+                } else if (!catch_result.is_rethrow()) {
+                    co_return std::tie(rethrow, catch_result.promised());
+                } else {
+                    co_return std::tie(rethrow, m_value);
                 }
-                co_return std::move(catch_result).value();
             } else {
                 co_return std::forward<Clause>(clause)(*catch_object);
             }
