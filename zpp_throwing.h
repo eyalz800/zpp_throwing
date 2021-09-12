@@ -908,6 +908,23 @@ class [[nodiscard]] throwing
     template <typename, typename>
     friend class result;
 
+    struct suspend_noreturn
+    {
+        constexpr bool await_ready() const noexcept
+        {
+            return false;
+        }
+
+        void await_suspend(coroutine_handle<>) const noexcept
+        {
+        }
+
+        [[noreturn]] void await_resume() const noexcept
+        {
+            while (true);
+        }
+    };
+
 public:
     struct zpp_throwing_tag
     {
@@ -968,7 +985,7 @@ public:
 
             m_value.set_exception(make_exception_ptr<exception, Allocator>(
                 std::forward<Value>(value)));
-            return suspend_always{};
+            return suspend_noreturn{};
         }
 
         /**
@@ -979,7 +996,7 @@ public:
         yield_value(std::tuple<const rethrow_t &, Exception &> exception)
         {
             m_value.propagate(std::get<1>(exception));
-            return suspend_always{};
+            return suspend_noreturn{};
         }
 
         /**
@@ -988,7 +1005,7 @@ public:
         auto yield_value(rethrow_t)
         {
             m_value.rethrow();
-            return suspend_always{};
+            return suspend_noreturn{};
         }
 
         /**
@@ -997,7 +1014,7 @@ public:
         auto yield_value(const error & error)
         {
             m_value.set_error(error);
-            return suspend_always{};
+            return suspend_noreturn{};
         }
 
         void unhandled_exception()

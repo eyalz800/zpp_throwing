@@ -100,7 +100,6 @@ zpp::throwing<std::string> bar(bool success)
     }).catches([&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
         co_yield std::runtime_error("Foo really failed");
-        co_return "foo failed"; // unreachable
     });
 }
 ```
@@ -120,7 +119,6 @@ zpp::throwing<std::string> bar(bool success)
     }).catches([&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         cout << "Runtime error caught: " << error.what() << '\n';
         co_yield zpp::rethrow;
-        co_return "foo failed"; // unreachable
     });
 }
 ```
@@ -137,7 +135,6 @@ zpp::throwing<std::string> bar(bool success)
     }).catches([&] (const std::logic_error & error) -> zpp::throwing<std::string> {
         std::cout << "Logic error caught: " << error.what() << '\n';
         co_yield std::runtime_error("Foo really failed");
-        co_return "foo failed"; // unreachable
     });
 }
 
