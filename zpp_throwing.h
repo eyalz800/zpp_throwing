@@ -1535,7 +1535,7 @@ private:
             typename std::invoke_result_t<
                 decltype(std::get<sizeof...(Clauses)>(
                     std::declval<std::tuple<Clause, Clauses...>>()))>;
-        }))) auto catch_exception_object(const dynamic_object & exception,
+        }))) Type catch_exception_object(const dynamic_object & exception,
                                          Clause && clause,
                                          Clauses &&... clauses)
     {
