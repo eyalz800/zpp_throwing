@@ -264,13 +264,13 @@ using suspend_never = std::experimental::suspend_never;
  * Determine the throwing state via error domain placeholders.
  * @{
  */
-enum class throwing_error
+enum class rethrow_error
 {
 };
 
 template <>
-inline constexpr auto err_domain<throwing_error> = zpp::make_error_domain(
-    {}, throwing_error{}, [](auto) constexpr->std::string_view {
+inline constexpr auto err_domain<rethrow_error> = zpp::make_error_domain(
+    {}, rethrow_error{}, [](auto) constexpr->std::string_view {
         return {};
     });
 
@@ -611,7 +611,7 @@ template <typename Type, typename ExceptionType, typename Allocator>
 struct promised_value
 {
     promised_value() :
-        m_error_domain(std::addressof(err_domain<throwing_error>))
+        m_error_domain(std::addressof(err_domain<rethrow_error>))
     {
     }
 
@@ -746,7 +746,8 @@ struct promised_value
 
     auto is_rethrow() const noexcept
     {
-        return has_exception() && !m_exception;
+        return m_error_domain ==
+               std::addressof(err_domain<rethrow_error>);
     }
 
     explicit operator bool() const noexcept
@@ -837,12 +838,7 @@ struct promised_value
      */
     void rethrow() noexcept
     {
-        if constexpr (std::is_trivially_destructible_v<ExceptionType>) {
-            m_exception = {};
-        } else {
-            ::new (std::addressof(m_exception)) ExceptionType();
-        }
-        m_error_domain = std::addressof(err_domain<throwing_exception>);
+        m_error_domain = std::addressof(err_domain<rethrow_error>);
     }
 
     /**
@@ -943,7 +939,8 @@ public:
             // Define the exception object that will be type erased.
             struct exception : public exception_object
             {
-                exception(Value && value) : m_value(std::move(value))
+                exception(Value && value) :
+                    m_value(std::forward<Value>(value))
                 {
                 }
 
@@ -1014,9 +1011,14 @@ public:
         }
 
     protected:
-        auto & value() noexcept
+        decltype(auto) value() & noexcept
         {
-            return m_value;
+            return (m_value);
+        }
+
+        decltype(auto) value() && noexcept
+        {
+            return std::move(m_value);
         }
 
         explicit operator bool() const noexcept
@@ -1216,7 +1218,7 @@ public:
         if constexpr (std::is_void_v<Type>) {
             return;
         } else {
-            return std::move(m_handle.promise().value()).value();
+            return std::move(m_handle.promise()).value().value();
         }
     }
 
@@ -1247,7 +1249,7 @@ private:
             }
         }
         m_handle.resume();
-        return std::move(m_handle.promise().value());
+        return std::move(m_handle.promise()).value();
     }
 
     coroutine_handle<promise_type> m_handle;
@@ -1618,7 +1620,7 @@ public:
             if constexpr (std::is_void_v<Type>) {
                 co_return;
             } else {
-                co_return std::move(value());
+                co_return std::move(*this).value();
             }
         }
 
@@ -1654,7 +1656,7 @@ public:
             if constexpr (std::is_void_v<Type>) {
                 return;
             } else {
-                return std::move(value());
+                return std::move(*this).value();
             }
         }
 
