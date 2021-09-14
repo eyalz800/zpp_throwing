@@ -871,6 +871,8 @@ struct promised_value
                     ExceptionType(std::move(other.m_exception));
             }
         } else {
+            // Since we don't have a value, or exception, error code is the
+            // active member of the union.
             m_error_code = other.m_error_code;
         }
         m_error_domain = other.m_error_domain;
@@ -1221,12 +1223,8 @@ public:
             }
         }
 
-        auto & value = m_handle.promise().value();
-
-        // Propagate exception unless it is rethrow.
-        if (!value.is_rethrow()) {
-            outer_handle.promise().value().propagate(value);
-        }
+        outer_handle.promise().value().propagate(
+            m_handle.promise().value());
     }
 
     /**
