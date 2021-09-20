@@ -1466,7 +1466,9 @@ private:
                 co_return std::forward<Clause>(clause)(
                     m_value.get_error());
             }
-        } else {
+        } else if constexpr (requires {
+                    define_exception<CatchType>();
+                }) {
             CatchType * catch_object = nullptr;
             if (exception.address) {
                 catch_object = static_cast<CatchType *>(
@@ -1507,6 +1509,9 @@ private:
             } else {
                 co_return std::forward<Clause>(clause)(*catch_object);
             }
+        } else {
+            static_assert(std::is_void_v<CatchType>,
+                          "Invalid catch clause.");
         }
     }
 
@@ -1579,7 +1584,9 @@ private:
             }
 
             return std::forward<Clause>(clause)(m_value.get_error());
-        } else {
+        } else if constexpr (requires {
+                    define_exception<CatchType>();
+                }) {
             CatchType * catch_object = nullptr;
             if (exception.address) {
                 catch_object = static_cast<CatchType *>(
@@ -1597,6 +1604,9 @@ private:
             }
 
             return std::forward<Clause>(clause)(*catch_object);
+        } else {
+            static_assert(std::is_void_v<CatchType>,
+                          "Invalid catch clause.");
         }
     }
 
