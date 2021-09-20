@@ -1467,6 +1467,46 @@ private:
                     m_value.get_error());
             }
         } else if constexpr (requires {
+                                error{CatchType{}};
+                             }) {
+            if (exception.address ||
+                std::addressof(m_value.get_error().domain()) !=
+                    std::addressof(err_domain<CatchType>)) {
+                if constexpr (0 != sizeof...(Clauses)) {
+                    if constexpr (
+                        requires {
+                            typename decltype(catch_exception_object(
+                                exception,
+                                std::forward<Clauses>(
+                                    clauses)...))::zpp_throwing_tag;
+                        }) {
+                        co_return co_await catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    } else {
+                        co_return catch_exception_object(
+                            exception, std::forward<Clauses>(clauses)...);
+                    }
+                } else {
+                    co_return std::tie(rethrow, m_value);
+                }
+            }
+
+            if constexpr (IsThrowing) {
+                auto error = m_value.get_error();
+                result catch_result =
+                    std::forward<Clause>(clause)(CatchType{error.code()});
+                if (catch_result) {
+                    co_return std::move(catch_result).value();
+                } else if (!catch_result.is_rethrow()) {
+                    co_return std::tie(rethrow, catch_result.promised());
+                } else {
+                    co_return std::tie(rethrow, m_value);
+                }
+            } else {
+                co_return std::forward<Clause>(clause)(
+                    CatchType{m_value.get_error().code()});
+            }
+        } else if constexpr (requires {
                     define_exception<CatchType>();
                 }) {
             CatchType * catch_object = nullptr;
@@ -1584,6 +1624,21 @@ private:
             }
 
             return std::forward<Clause>(clause)(m_value.get_error());
+        } else if constexpr (requires {
+                                error{CatchType{}};
+                             }) {
+            if (exception.address ||
+                std::addressof(m_value.get_error().domain()) !=
+                    std::addressof(err_domain<CatchType>)) {
+                static_assert(0 != sizeof...(Clauses),
+                              "Missing catch all block in non "
+                              "throwing catches.");
+                return catch_exception_object(
+                    exception, std::forward<Clauses>(clauses)...);
+            }
+
+            return std::forward<Clause>(clause)(
+                CatchType{m_value.get_error().code()});
         } else if constexpr (requires {
                     define_exception<CatchType>();
                 }) {

@@ -229,8 +229,31 @@ inline constexpr auto zpp::err_domain<my_error> = zpp::make_error_domain(
 });
 ```
 
-Error values of the enum shall not exceed the maximum value of `254`, see the limitations and caveats section
-for details.
+You can even catch the error enumeration directly, like so:
+```cpp
+int main()
+{
+    zpp::try_catch([]() -> zpp::throwing<void> {
+        // Throws an exception.
+        co_yield std::errc::invalid_argument;
+    }).catches([](std::errc error) {
+        switch(error) {
+        case std::errc::invalid_argument: {
+            std::cout << "Caught the invalid argument directly by enumeration type\n"
+                << "And here is the message: " << zpp::error(error).message() << '\n';
+            break;
+        }
+        default: {
+            zpp::error my_error = error;
+            std::cout << "Error: " << my_error.code() <<
+                " [" << my_error.domain().name() << "]: " << my_error.message() << '\n';
+        }
+        }
+    }, [](){
+        /* catch all */
+    });
+}
+```
 
 ### Optimize Calls Between Translation Units
 Currently for HALO optimization to work, the ramp function of the coroutine needs to be
