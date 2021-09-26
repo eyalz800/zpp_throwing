@@ -403,6 +403,8 @@ cannot propagate from constructors natively, and it needs to be worked around, t
 to the constructor or other means such as factory functions.
 3. The code has gone only through very minimal testing, with recent clang compiler.
 4. The code requires `C++20` and above.
+5. You must catch every dynamic exception that you throw, otherwise a memory leak of the exception object
+will occur, this is to optimize the non-trivial destruction that happens when propagating the exception.
 
 Final Word
 ----------
