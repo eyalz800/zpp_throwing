@@ -617,6 +617,7 @@ template <typename Type, typename Allocator>
 struct exit_condition
 {
     using exception_type = exception_ptr<Allocator>;
+    using error_type = error;
 
     exit_condition() :
         m_error_domain(std::addressof(err_domain<rethrow_error>))
@@ -626,7 +627,7 @@ struct exit_condition
     exit_condition(exit_condition && other) noexcept(
         std::is_void_v<Type> || std::is_nothrow_move_constructible_v<Type>)
     {
-        if (other.has_value()) {
+        if (other.is_value()) {
             if constexpr (!std::is_void_v<Type>) {
                 if constexpr (!std::is_reference_v<Type>) {
                     ::new (std::addressof(m_return_value))
@@ -636,7 +637,7 @@ struct exit_condition
                 }
             }
         } else {
-            if (other.has_exception()) {
+            if (other.is_exception()) {
                 ::new (std::addressof(m_exception))
                     exception_type(std::move(other.m_exception));
             } else {
@@ -655,15 +656,15 @@ struct exit_condition
             return *this;
         }
 
-        if (other.has_value()) {
-            if (has_value()) {
+        if (other.is_value()) {
+            if (is_value()) {
                 if constexpr (!std::is_void_v<Type>) {
                     m_return_value = std::move(other.m_return_value);
                 }
             } else {
                 if constexpr (!std::is_trivially_destructible_v<
                                   exception_type>) {
-                    if (has_exception()) {
+                    if (is_exception()) {
                         m_exception.~exception_type();
                     }
                 }
@@ -676,16 +677,16 @@ struct exit_condition
         } else {
             if constexpr (!std::is_void_v<Type> &&
                           !std::is_trivially_destructible_v<Type>) {
-                if (has_value()) {
+                if (is_value()) {
                     m_return_value.~Type();
                 }
             }
-            if (other.has_exception()) {
+            if (other.is_exception()) {
                 if constexpr (std::is_trivially_destructible_v<
                                   exception_type>) {
                     m_exception = std::move(other.m_exception);
                 } else {
-                    if (has_exception()) {
+                    if (is_exception()) {
                         m_exception = std::move(other.m_exception);
                     } else {
                         ::new (std::addressof(m_exception))
@@ -695,7 +696,7 @@ struct exit_condition
             } else {
                 if constexpr (!std::is_trivially_destructible_v<
                                   exception_type>) {
-                    if (has_exception()) {
+                    if (is_exception()) {
                         m_exception.~exception_type();
                     }
                 }
@@ -713,31 +714,31 @@ struct exit_condition
                       !std::is_trivially_destructible_v<Type>) {
             if constexpr (!std::is_trivially_destructible_v<
                               exception_type>) {
-                if (has_value()) {
+                if (is_value()) {
                     m_return_value.~Type();
-                } else if (has_exception()) {
+                } else if (is_exception()) {
                     m_exception.~exception_type();
                 }
             } else {
-                if (has_value()) {
+                if (is_value()) {
                     m_return_value.~Type();
                 }
             }
         } else if constexpr (!std::is_trivially_destructible_v<
                                  exception_type>) {
-            if (has_exception()) {
+            if (is_exception()) {
                 m_exception.~exception_type();
             }
         }
     }
 
-    bool has_exception() const noexcept
+    bool is_exception() const noexcept
     {
         return m_error_domain ==
                std::addressof(err_domain<throwing_exception>);
     }
 
-    bool has_value() const noexcept
+    bool is_value() const noexcept
     {
         return !m_error_domain;
     }
@@ -752,9 +753,9 @@ struct exit_condition
         return m_error_domain;
     }
 
-    bool has_error() const noexcept
+    bool is_error() const noexcept
     {
-        return !has_value() && !has_exception();
+        return !is_value() && !is_exception();
     }
 
     auto is_rethrow() const noexcept
@@ -790,9 +791,9 @@ struct exit_condition
         return *m_exception;
     }
 
-    error get_error() const noexcept
+    auto error() const noexcept
     {
-        return error(m_error_code, *m_error_domain);
+        return error_type{m_error_code, *m_error_domain};
     }
 
     /**
@@ -855,7 +856,7 @@ struct exit_condition
      * Exits with an error value.
      * Must not call exit functions exactly once.
      */
-    void exit_with_error(const error & error) noexcept
+    void exit_with_error(const error_type & error) noexcept
     {
         m_error_domain = std::addressof(error.domain());
         m_error_code = error.code();
@@ -870,7 +871,7 @@ struct exit_condition
     void
     exit_propagate(exit_condition<OtherType, Allocator> & other) noexcept
     {
-        if (other.has_exception()) {
+        if (other.is_exception()) {
             ::new (std::addressof(m_exception))
                 exception_type(std::move(other.m_exception));
         } else {
@@ -1430,7 +1431,7 @@ private:
             }
         } else if constexpr (requires {
                                  std::forward<Clause>(clause)(
-                                     m_condition.get_error());
+                                     m_condition.error());
                              }) {
             if (exception.address) {
                 if constexpr (0 != sizeof...(Clauses)) {
@@ -1453,7 +1454,7 @@ private:
             }
 
             if constexpr (IsThrowing) {
-                auto error = m_condition.get_error();
+                auto error = m_condition.error();
                 condition catch_condition =
                     std::forward<Clause>(clause)(error);
                 if (catch_condition) {
@@ -1466,11 +1467,11 @@ private:
                 }
             } else {
                 co_return std::forward<Clause>(clause)(
-                    m_condition.get_error());
+                    m_condition.error());
             }
         } else if constexpr (requires { error{CatchType{}}; }) {
             if (exception.address ||
-                std::addressof(m_condition.get_error().domain()) !=
+                std::addressof(m_condition.error().domain()) !=
                     std::addressof(err_domain<CatchType>)) {
                 if constexpr (0 != sizeof...(Clauses)) {
                     if constexpr (
@@ -1492,7 +1493,7 @@ private:
             }
 
             if constexpr (IsThrowing) {
-                auto error = m_condition.get_error();
+                auto error = m_condition.error();
                 condition catch_condition =
                     std::forward<Clause>(clause)(CatchType{error.code()});
                 if (catch_condition) {
@@ -1505,7 +1506,7 @@ private:
                 }
             } else {
                 co_return std::forward<Clause>(clause)(
-                    CatchType{m_condition.get_error().code()});
+                    CatchType{m_condition.error().code()});
             }
         } else if constexpr (requires { define_exception<CatchType>(); }) {
             CatchType * catch_object = nullptr;
@@ -1614,7 +1615,7 @@ private:
             return std::forward<Clause>(clause)();
         } else if constexpr (requires {
                                  std::forward<Clause>(clause)(
-                                     m_condition.get_error());
+                                     m_condition.error());
                              }) {
             if (exception.address) {
                 static_assert(0 != sizeof...(Clauses),
@@ -1624,10 +1625,10 @@ private:
                     exception, std::forward<Clauses>(clauses)...);
             }
 
-            return std::forward<Clause>(clause)(m_condition.get_error());
+            return std::forward<Clause>(clause)(m_condition.error());
         } else if constexpr (requires { error{CatchType{}}; }) {
             if (exception.address ||
-                std::addressof(m_condition.get_error().domain()) !=
+                std::addressof(m_condition.error().domain()) !=
                     std::addressof(err_domain<CatchType>)) {
                 static_assert(0 != sizeof...(Clauses),
                               "Missing catch all block in non "
@@ -1637,7 +1638,7 @@ private:
             }
 
             return std::forward<Clause>(clause)(
-                CatchType{m_condition.get_error().code()});
+                CatchType{m_condition.error().code()});
         } else if constexpr (requires { define_exception<CatchType>(); }) {
             CatchType * catch_object = nullptr;
             if (exception.address) {
@@ -1710,7 +1711,7 @@ public:
         co_return co_await catch_exception_object(
             // Increase chance `catches` gets inlined.
             [&] {
-                return m_condition.has_exception()
+                return m_condition.is_exception()
                            ? m_condition.exception().dynamic_object()
                            : exception_object::null_dynamic_object;
             }(),
@@ -1734,23 +1735,23 @@ public:
     })
     {
         // If there is no exception, skip.
-        if (m_condition) {
+        if (m_condition.success()) [[likely]] {
             if constexpr (std::is_void_v<Type>) {
                 return;
             } else {
                 return std::move(*this).value();
             }
+        } else [[unlikely]] {
+            // Follow to catch the exception.
+            return catch_exception_object(
+                // Increase chance `catches` gets inlined.
+                [&] {
+                    return m_condition.is_exception()
+                               ? m_condition.exception().dynamic_object()
+                               : exception_object::null_dynamic_object;
+                }(),
+                std::forward<Clauses>(clauses)...);
         }
-
-        // Follow to catch the exception.
-        return catch_exception_object(
-            // Increase chance `catches` gets inlined.
-            [&] {
-                return m_condition.has_exception()
-                           ? m_condition.exception().dynamic_object()
-                           : exception_object::null_dynamic_object;
-            }(),
-            std::forward<Clauses>(clauses)...);
     }
 };
 
