@@ -259,7 +259,7 @@ int main()
 Currently for HALO optimization to work, the ramp function of the coroutine needs to be
 accessible to inline for the compiler. It means that between different translation units
 the coroutines may have to allocate memory for the state object. To overcome this, it is possible
-to use `zpp::result<Type>`, in the following way:
+to use `zpp::condition<Type>`, in the following way:
 ```cpp
 // a.cpp
 static zpp::throwing<int> a_foo_impl()
@@ -268,9 +268,9 @@ static zpp::throwing<int> a_foo_impl()
     co_return 0;
 }
 
-zpp::result<int> a_foo()
+zpp::condition<int> a_foo()
 {
-    // Implicitly converted to zpp::result.
+    // Implicitly converted to zpp::condition.
     return a_foo_impl();
 }
 
@@ -278,7 +278,7 @@ zpp::result<int> a_foo()
 int main()
 {
     return zpp::try_catch([]() -> zpp::throwing<int> {
-        // Awaiting the result type.
+        // Awaiting the condition type.
         std::cout << co_await a_foo() << '\n';
     }).catches([](zpp::error error) {
         std::cout << "Error: " << error.code() <<
@@ -293,7 +293,7 @@ int main()
 
 Similarily, we could avoid declaring `a_foo_impl` and do the following:
 ```cpp
-zpp::result<int> a_foo()
+zpp::condition<int> a_foo()
 {
     return [&]() -> zpp::throwing<int> {
         co_yield std::errc::address_in_use;
@@ -302,10 +302,11 @@ zpp::result<int> a_foo()
 }
 ```
 
-The `operator*` of `zpp::throwing` returns the stored result value. Merely returning
-this value makes `a_foo` a normal function, and as such does not require allocation of the
-coroutine state object. `zpp::result<Type>` exposes `operator co_await` to be able to get the
-value or throw if there is a stored exception/error within.
+The example above uses the implicit conversion of `zpp::throwing<Type>` to `zpp::condition<Type>`.
+Returning this `zpp::condition` with normal `return` makes makes `a_foo` a normal function.
+As such does not attempt to allocate a coroutine state object.
+`zpp::condition<Type>` exposes `operator co_await` to be able to get the
+value or propagate the error in case of failure.
 
 ### Throwing Exceptions with `co_yield` vs `co_return`
 There are really two options the library offers to throw an exception, and you can actually
