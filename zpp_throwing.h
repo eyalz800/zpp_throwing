@@ -642,7 +642,7 @@ template <typename Type, typename ExceptionType, typename Allocator>
 struct exit_condition
 {
     using exception_type = ExceptionType;
-    using error_type = error;
+    using error_type = class error;
 
     exit_condition() :
         m_error_domain(std::addressof(err_domain<rethrow_error>))
@@ -1257,7 +1257,7 @@ private:
 template <typename Type, typename Allocator = void>
 class [[nodiscard]] thrown
 {
-    exit_condition<Type, exception_object *, Allocator> m_condition{};
+    struct exit_condition<Type, exception_object *, Allocator> m_condition{};
 
 public:
     template <typename, typename>
