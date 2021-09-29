@@ -650,8 +650,10 @@ struct exit_condition
     }
 
     template <typename OtherExceptionType>
-    exit_condition(exit_condition<Type, OtherExceptionType, Allocator> && other) noexcept(
-        std::is_void_v<Type> || std::is_nothrow_move_constructible_v<Type>)
+    exit_condition(
+        exit_condition<Type, OtherExceptionType, Allocator> &&
+            other) noexcept(std::is_void_v<Type> ||
+                            std::is_nothrow_move_constructible_v<Type>)
     {
         if (other.is_value()) {
             if constexpr (!std::is_void_v<Type>) {
@@ -833,8 +835,9 @@ struct exit_condition
      * error or an exception.
      */
     template <typename OtherType, typename OtherExceptionType>
-    void
-    exit_propagate(exit_condition<OtherType, OtherExceptionType, Allocator> & other) noexcept
+    void exit_propagate(
+        exit_condition<OtherType, OtherExceptionType, Allocator> &
+            other) noexcept
     {
         if (other.is_exception()) {
             if constexpr (!std::is_same_v<ExceptionType,
@@ -884,7 +887,7 @@ template <typename Type, typename Allocator = void>
 class [[nodiscard]] throwing
 {
     template <typename, typename>
-    friend class condition;
+    friend class thrown;
 
     struct suspend_noreturn
     {
@@ -973,8 +976,8 @@ public:
          * Rethrow from exising.
          */
         template <typename ExitCondition>
-        auto
-        yield_value(std::tuple<const rethrow_t &, ExitCondition &> error_condition)
+        auto yield_value(
+            std::tuple<const rethrow_t &, ExitCondition &> error_condition)
         {
             m_condition.exit_propagate(std::get<1>(error_condition));
             return suspend_noreturn{};
@@ -1228,7 +1231,7 @@ public:
 
 private:
     /**
-     * Call the function and return the exit condition.
+     * Call the function and return the exit thrown.
      */
     auto invoke()
     {
@@ -1252,7 +1255,7 @@ private:
  * Represents a value that may contain an exception/error,
  */
 template <typename Type, typename Allocator = void>
-class [[nodiscard]] condition
+class [[nodiscard]] thrown
 {
     exit_condition<Type, exception_object *, Allocator> m_condition{};
 
@@ -1261,9 +1264,9 @@ public:
     friend class throwing;
 
     /**
-     * Create the condition from the throwing object.
+     * Create the thrown from the throwing object.
      */
-    condition(throwing<Type, Allocator> throwing) noexcept :
+    thrown(throwing<Type, Allocator> throwing) noexcept :
         m_condition(throwing.invoke())
     {
     }
@@ -1390,20 +1393,20 @@ private:
             static_assert(0 == sizeof...(Clauses),
                           "Catch all clause must be the last one.");
             if constexpr (IsThrowing) {
-                condition catch_condition = std::forward<Clause>(clause)();
-                if (catch_condition) {
+                thrown thrown_object = std::forward<Clause>(clause)();
+                if (thrown_object) {
                     if (exception.address) {
                         exception_ptr<Allocator>(
                             std::addressof(m_condition.exception()));
                     }
-                    co_return std::move(catch_condition).value();
-                } else if (!catch_condition.is_rethrow()) {
+                    co_return std::move(thrown_object).value();
+                } else if (!thrown_object.is_rethrow()) {
                     if (exception.address) {
                         exception_ptr<Allocator>(
                             std::addressof(m_condition.exception()));
                     }
                     co_return std::tie(rethrow,
-                                       catch_condition.exit_condition());
+                                       thrown_object.exit_condition());
                 } else {
                     co_return std::tie(rethrow, m_condition);
                 }
@@ -1440,13 +1443,12 @@ private:
 
             if constexpr (IsThrowing) {
                 auto error = m_condition.error();
-                condition catch_condition =
-                    std::forward<Clause>(clause)(error);
-                if (catch_condition) {
-                    co_return std::move(catch_condition).value();
-                } else if (!catch_condition.is_rethrow()) {
+                thrown thrown_object = std::forward<Clause>(clause)(error);
+                if (thrown_object) {
+                    co_return std::move(thrown_object).value();
+                } else if (!thrown_object.is_rethrow()) {
                     co_return std::tie(rethrow,
-                                       catch_condition.exit_condition());
+                                       thrown_object.exit_condition());
                 } else {
                     co_return std::tie(rethrow, m_condition);
                 }
@@ -1479,13 +1481,13 @@ private:
 
             if constexpr (IsThrowing) {
                 auto error = m_condition.error();
-                condition catch_condition =
+                thrown thrown_object =
                     std::forward<Clause>(clause)(CatchType{error.code()});
-                if (catch_condition) {
-                    co_return std::move(catch_condition).value();
-                } else if (!catch_condition.is_rethrow()) {
+                if (thrown_object) {
+                    co_return std::move(thrown_object).value();
+                } else if (!thrown_object.is_rethrow()) {
                     co_return std::tie(rethrow,
-                                       catch_condition.exit_condition());
+                                       thrown_object.exit_condition());
                 } else {
                     co_return std::tie(rethrow, m_condition);
                 }
@@ -1523,23 +1525,23 @@ private:
             }
 
             if constexpr (IsThrowing) {
-                condition catch_condition =
+                thrown thrown_object =
                     std::forward<Clause>(clause)(*catch_object);
-                if (catch_condition) {
+                if (thrown_object) {
                     exception_ptr<Allocator>(
                         std::addressof(m_condition.exception()));
-                    co_return std::move(catch_condition).value();
-                } else if (!catch_condition.is_rethrow()) {
+                    co_return std::move(thrown_object).value();
+                } else if (!thrown_object.is_rethrow()) {
                     exception_ptr<Allocator>(
                         std::addressof(m_condition.exception()));
                     co_return std::tie(rethrow,
-                                       catch_condition.exit_condition());
+                                       thrown_object.exit_condition());
                 } else {
                     co_return std::tie(rethrow, m_condition);
                 }
             } else {
                 exception_ptr<Allocator> exception_disposer(
-                        std::addressof(m_condition.exception()));
+                    std::addressof(m_condition.exception()));
                 co_return std::forward<Clause>(clause)(*catch_object);
             }
         } else {
@@ -1652,7 +1654,7 @@ private:
             }
 
             exception_ptr<Allocator> exception_disposer(
-                    std::addressof(m_condition.exception()));
+                std::addressof(m_condition.exception()));
             return std::forward<Clause>(clause)(*catch_object);
         } else {
             static_assert(std::is_void_v<CatchType>,
@@ -1765,7 +1767,7 @@ auto try_catch(Clause && clause)
                       typename std::invoke_result_t<
                           Clause>::zpp_throwing_tag;
                   }) {
-        return condition(std::forward<Clause>(clause)());
+        return thrown(std::forward<Clause>(clause)());
     } else {
         static_assert(std::is_void_v<Clause>,
                       "try_catch clause must be a coroutine.");
@@ -1773,11 +1775,11 @@ auto try_catch(Clause && clause)
 }
 
 template <typename TryClause, typename... CatchClause>
-decltype(condition(std::declval<TryClause>()())
+decltype(thrown(std::declval<TryClause>()())
              .catches(std::declval<CatchClause>()...))
 try_catch(TryClause && try_clause,
           CatchClause &&... catch_clause) requires(requires {
-    typename decltype(condition(std::declval<TryClause>()())
+    typename decltype(thrown(std::declval<TryClause>()())
                           .catches(std::declval<
                                    CatchClause>()...))::zpp_throwing_tag;
 })
@@ -1795,11 +1797,11 @@ try_catch(TryClause && try_clause,
 }
 
 template <typename TryClause, typename... CatchClause>
-decltype(condition(std::declval<TryClause>()())
+decltype(thrown(std::declval<TryClause>()())
              .catches(std::declval<CatchClause>()...))
 try_catch(TryClause && try_clause,
           CatchClause &&... catch_clause) requires(!requires {
-    typename decltype(condition(std::declval<TryClause>()())
+    typename decltype(thrown(std::declval<TryClause>()())
                           .catches(std::declval<
                                    CatchClause>()...))::zpp_throwing_tag;
 })
