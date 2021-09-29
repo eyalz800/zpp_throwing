@@ -19,10 +19,7 @@ Motivation
 ----------
 With this library I am trying to provide a `coroutine` based implementation that resembles
 C++ exceptions as close as I could get. I made sure that it works also
-whenn compiling without exceptions and RTTI (i.e `-fno-exceptions -fno-rtti`).
-
-I have not set a goal that this would be a valid solution for performance critical code, however, I am looking for
-advice if available how to improve the performance and reduce overhead.
+when compiling without exceptions and RTTI (i.e `-fno-exceptions -fno-rtti`).
 
 Contents
 --------
@@ -34,7 +31,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_yield std::runtime_error("My runtime error");
+        co_return std::runtime_error("My runtime error");
     }
 
     // Returns a value.
@@ -51,32 +48,6 @@ int main()
         std::cout << "Hello World\n";
         std::cout << co_await foo(false) << '\n';;
         co_return 0;
-    }).catches([&](const std::exception & error) {
-        std::cout << "std exception caught: " << error.what() << '\n';
-        return 1;
-    }, [&]() {
-        std::cout << "Unknown exception\n";
-        return 1;
-    });
-}
-```
-The `zpp::try_catch` function attempts to execute the function object that is sent to it, and when an exception is thrown,
-the following `catches` function will invoke the function object that receives an exception from the appropriate type, similar to a C++
-catch block. The last function object can optionally receive no parameters and as such
-functions as `catch (...)` to catch all exceptions.
-
-In this example `foo` was called with `false`, and hence it throws the `std::runtime_error` exception which
-is caught at the first lambda function sent to `catches`. This lambda then returns `1` which eventually
-being returned from `main`.
-
-An abbreviated way of the above is to omit the `catches` like so:
-```cpp
-int main()
-{
-    return zpp::try_catch([]() -> zpp::throwing<int> {
-        std::cout << "Hello World\n";
-        std::cout << co_await foo(false) << '\n';;
-        co_return 0;
     }, [&](const std::exception & error) {
         std::cout << "std exception caught: " << error.what() << '\n';
         return 1;
@@ -86,39 +57,45 @@ int main()
     });
 }
 ```
+The `zpp::try_catch` function attempts to execute the function object that is sent to it, and when an exception is thrown,
+one of the following function objects that receives an exception from the appropriate type will get called, similar to a C++
+catch block. The last function object can optionally receive no parameters and as such
+functions as `catch (...)` to catch all exceptions.
 
+In this example `foo` was called with `false`, and hence it throws the `std::runtime_error` exception which
+is caught at the first lambda function sent as catch block. This lambda then returns `1` which eventually
+being returned from `main`.
 
-### Throwing Exceptions From Within `catches`
-Like in normal catch block, it is possible to throw from the lambdas sent to `catches`:
+### Throwing Exceptions From Within Catch Blocks
+Like in normal catch block, it is possible to throw from the catching lambdas:
 ```cpp
 zpp::throwing<std::string> bar(bool success)
 {
-    co_return co_await zpp::try_catch([&]() -> zpp::throwing<std::string> {
+    return zpp::try_catch([&]() -> zpp::throwing<std::string> {
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }).catches([&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
-        co_yield std::runtime_error("Foo really failed");
+        co_return std::runtime_error("Foo really failed");
     });
 }
 ```
 
-Note that the lambda function sent to `catches` now returns a `zpp::throwing<std::string>`
-which allows it to throw exceptions using `co_yield`. It also makes the `catches` function
-be a coroutine by itself, which we await with `co_await`.
+Note that the lambda function sent as a catch block now returns a `zpp::throwing<std::string>`
+which allows it to throw exceptions using `co_return`.
 
 It is even possible to rethrow the caught excpetion using `zpp::rethrow`:
 ```cpp
 zpp::throwing<std::string> bar(bool success)
 {
-    co_return co_await zpp::try_catch([&]() -> zpp::throwing<std::string> {
+    return zpp::try_catch([&]() -> zpp::throwing<std::string> {
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }).catches([&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         cout << "Runtime error caught: " << error.what() << '\n';
-        co_yield zpp::rethrow;
+        co_return zpp::rethrow;
     });
 }
 ```
@@ -128,13 +105,13 @@ the exception is actually caught by the `main()` function below as an `std::exce
 ```cpp
 zpp::throwing<std::string> bar(bool success)
 {
-    co_return co_await zpp::try_catch([&]() -> zpp::throwing<std::string> {
+    return zpp::try_catch([&]() -> zpp::throwing<std::string> {
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }).catches([&] (const std::logic_error & error) -> zpp::throwing<std::string> {
+    }, [&] (const std::logic_error & error) -> zpp::throwing<std::string> {
         std::cout << "Logic error caught: " << error.what() << '\n';
-        co_yield std::runtime_error("Foo really failed");
+        co_return std::runtime_error("Foo really failed");
     });
 }
 
@@ -144,7 +121,7 @@ int main()
         std::cout << "Hello World\n";
         std::cout << co_await bar(false) << '\n';;
         co_return 0;
-    }).catches([&](const std::exception & error) {
+    }, [&](const std::exception & error) {
         std::cout << "std exception caught: " << error.what() << '\n';
         return 1;
     }, [&]() {
@@ -180,7 +157,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_yield my_custom_derived_exception();
+        co_return my_custom_derived_exception();
     }
 
     // Returns a value.
@@ -194,8 +171,8 @@ int main()
 {
     zpp::try_catch([]() -> zpp::throwing<void> {
         // Throws an exception.
-        co_yield std::errc::invalid_argument;
-    }).catches([](zpp::error error) {
+        co_return std::errc::invalid_argument;
+    }, [](zpp::error error) {
         std::cout << "Error: " << error.code() <<
             " [" << error.domain().name() << "]: " << error.message() << '\n';
     }, [](){
@@ -235,8 +212,8 @@ int main()
 {
     zpp::try_catch([]() -> zpp::throwing<void> {
         // Throws an exception.
-        co_yield std::errc::invalid_argument;
-    }).catches([](std::errc error) {
+        co_return std::errc::invalid_argument;
+    }, [](std::errc error) {
         switch(error) {
         case std::errc::invalid_argument: {
             std::cout << "Caught the invalid argument directly by enumeration type\n"
@@ -255,86 +232,22 @@ int main()
 }
 ```
 
-### Optimize Calls Between Translation Units
-Currently for HALO optimization to work, the ramp function of the coroutine needs to be
-accessible to inline for the compiler. It means that between different translation units
-the coroutines may have to allocate memory for the state object. To overcome this, it is possible
-to use `zpp::thrown<Type>`, in the following way:
-```cpp
-// a.cpp
-static zpp::throwing<int> a_foo_impl()
-{
-    co_yield std::errc::address_in_use;
-    co_return 0;
-}
+### Leaf Functions May Just Use Return
+Because being a coroutine is an implementation detail, if you don't
+call any other throwing function, it is possible to just stay a normal function
+rather than become a coroutine, so throwing or returning a value can simply be achieved
+by a simple `return`.
 
-zpp::thrown<int> a_foo()
-{
-    // Implicitly converted to zpp::thrown.
-    return a_foo_impl();
-}
-
-// main.cpp
-int main()
-{
-    return zpp::try_catch([]() -> zpp::throwing<int> {
-        // Awaiting the thrown type.
-        std::cout << co_await a_foo() << '\n';
-    }).catches([](zpp::error error) {
-        std::cout << "Error: " << error.code() <<
-            " [" << error.domain().name() << "]: " << error.message() << '\n';
-        return 1;
-    }, [&]() {
-        std::cout << "Unknown exception\n";
-        return 1;
-    });
-}
-```
-
-Similarily, we could avoid declaring `a_foo_impl` and do the following:
-```cpp
-zpp::thrown<int> a_foo()
-{
-    return [&]() -> zpp::throwing<int> {
-        co_yield std::errc::address_in_use;
-        co_return 0;
-    }();
-}
-```
-
-The example above uses the implicit conversion of `zpp::throwing<Type>` to `zpp::thrown<Type>`.
-Returning this `zpp::thrown` with normal `return` makes makes `a_foo` a normal function.
-As such does not attempt to allocate a coroutine state object.
-`zpp::thrown<Type>` exposes `operator co_await` to be able to get the
-value or propagate the error in case of failure.
-
-### Throwing Exceptions with `co_yield` vs `co_return`
-There are really two options the library offers to throw an exception, and you can actually
-throw also with `co_return`. The library will understand whether you are actually returning
-a value or throwing, by the type of the return expression.
-
-What you need to know is that `co_return` seems to generate less code because it cannot be resumed,
-but it cannot be used for `zpp::throwing<void>`. If you want to throw exceptions with `co_return`
-in void returning functions, use `zpp::throwing<zpp::void_t>` instead, and `co_return zpp::void_v`.
-
-Example:
 ```cpp
 zpp::throwing<int> foo(bool success)
 {
     if (!success) {
-        // Throws an exception, with `co_return`.
-        co_return std::runtime_error("My runtime error");
-    }
-
-    // ...
-
-    if (!success) {
-        // Throwing values with `co_return` is also possible.
-        co_return std::errc::invalid_argument;
+        // Throws an exception.
+        return std::runtime_error("My runtime error");
     }
 
     // Returns a value.
-    co_return 1337;
+    return 1337;
 }
 ```
 
@@ -349,7 +262,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_yield std::runtime_error("My runtime error");
+        co_return std::runtime_error("My runtime error");
     }
 
     // Returns a value.
@@ -358,11 +271,11 @@ zpp::throwing<int> foo(bool success)
 
 zpp::throwing<std::string> bar(bool success)
 {
-    co_return co_await zpp::try_catch([&]() -> zpp::throwing<std::string> {
+    return zpp::try_catch([&]() -> zpp::throwing<std::string> {
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }).catches([&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
         co_return "foo failed";
     });
@@ -372,7 +285,7 @@ zpp::throwing<std::string> foobar()
 {
     auto result = co_await bar(false);
     if (result.find("foo succeeded") == std::string::npos) {
-        co_yield std::runtime_error("bar() apparently succeeded even though foo() failed");
+        co_return std::runtime_error("bar() apparently succeeded even though foo() failed");
     }
 
     co_return result;
@@ -384,7 +297,7 @@ int main()
         std::cout << "Hello World\n";
         std::cout << co_await foobar() << '\n';;
         co_return 0;
-    }).catches([&](const std::exception & error) {
+    }, [&](const std::exception & error) {
         std::cout << "std exception caught: " << error.what() << '\n';
         return 1;
     }, [&]() {
