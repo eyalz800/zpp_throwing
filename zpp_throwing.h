@@ -907,12 +907,14 @@ struct exit_condition
 
 /**
  * Use as the return type of the function, throw exceptions
- * by using `co_return`. If you want to throw exceptions using `co_return`
- * in void returning functions, use `zpp::throwing<zpp::void_t>` instead,
- * and `co_return zpp::void_v` to exit normally).
- * Call throwing functions by `co_await`, and return values using
- * `co_return`. Use the `zpp::try_catch` function to execute a function
- * object and then to catch exceptions thrown from it.
+ * by using `co_yield` / `co_return`. Using `co_yield` is clearer
+ * but in some cases may generate less code than `co_return`.
+ * If you want to throw exceptions using `co_return` in void returning
+ * functions, use `zpp::throwing<zpp::void_t>` instead, and `co_return
+ * zpp::void_v` to exit normally). Call throwing functions by `co_await`,
+ * and return values using `co_return`. Use the `zpp::try_catch` function
+ * to execute a function object and then to catch exceptions thrown from
+ * it.
  */
 template <typename Type, typename Allocator = void>
 class [[nodiscard]] throwing
@@ -935,6 +937,13 @@ public:
         template <typename, typename>
         friend class throwing;
 
+        struct suspend_destroy
+        {
+            constexpr bool await_ready() noexcept { return false; }
+            void await_suspend(auto handle) noexcept { handle.destroy(); }
+            [[noreturn]] void await_resume() noexcept { while (true); }
+        };
+
         auto get_return_object()
         {
             return throwing{static_cast<promise_type &>(*this)};
@@ -956,7 +965,17 @@ public:
         }
 
         /**
-         * Throw an exception, suspends the calling coroutine.
+         * Throw and destroy calling coroutine.
+         */
+        template <typename Value>
+        auto yield_value(Value && value)
+        {
+            throw_it(std::forward<Value>(value));
+            return suspend_destroy{};
+        }
+
+        /**
+         * Throw an exception.
          */
         template <typename Value>
         void throw_it(Value && value) requires requires

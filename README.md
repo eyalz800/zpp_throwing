@@ -31,7 +31,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_return std::runtime_error("My runtime error");
+        co_yield std::runtime_error("My runtime error");
     }
 
     // Returns a value.
@@ -77,7 +77,7 @@ zpp::throwing<std::string> bar(bool success)
         co_return "foo succeeded";
     }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
-        co_return std::runtime_error("Foo really failed");
+        co_yield std::runtime_error("Foo really failed");
     });
 }
 ```
@@ -95,7 +95,7 @@ zpp::throwing<std::string> bar(bool success)
         co_return "foo succeeded";
     }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
         cout << "Runtime error caught: " << error.what() << '\n';
-        co_return zpp::rethrow;
+        co_yield zpp::rethrow;
     });
 }
 ```
@@ -111,7 +111,7 @@ zpp::throwing<std::string> bar(bool success)
         co_return "foo succeeded";
     }, [&] (const std::logic_error & error) -> zpp::throwing<std::string> {
         std::cout << "Logic error caught: " << error.what() << '\n';
-        co_return std::runtime_error("Foo really failed");
+        co_yield std::runtime_error("Foo really failed");
     });
 }
 
@@ -157,7 +157,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_return my_custom_derived_exception();
+        co_yield my_custom_derived_exception();
     }
 
     // Returns a value.
@@ -171,7 +171,7 @@ int main()
 {
     zpp::try_catch([]() -> zpp::throwing<void> {
         // Throws an exception.
-        co_return std::errc::invalid_argument;
+        co_yield std::errc::invalid_argument;
     }, [](zpp::error error) {
         std::cout << "Error: " << error.code() <<
             " [" << error.domain().name() << "]: " << error.message() << '\n';
@@ -232,6 +232,33 @@ int main()
 }
 ```
 
+### Throwing Exceptions with `co_yield` vs `co_return`
+You may throw also with `co_return`. The library will understand whether you are actually returning
+a value or throwing, by the type of the return expression. Theoretically `co_return` should generate
+better code because it does not add a suspend point but it is highly optimizable, and the
+library actually takes care of destroying the coroutine on the first suspend.
+
+-Example:
+```cpp
+zpp::throwing<int> foo(bool success)
+{
+    if (!success) {
+        // Throws an exception, with `co_return`.
+        co_return std::runtime_error("My runtime error");
+    }
+
+    // ...
+
+    if (!success) {
+        // Throwing values with `co_return` is also possible.
+        co_return std::errc::invalid_argument;
+    }
+
+    // Returns a value.
+    co_return 1337;
+}
+```
+
 ### Leaf Functions May Just Use Return
 Because being a coroutine is an implementation detail, if you don't
 call any other throwing function, it is possible to just stay a normal function
@@ -262,7 +289,7 @@ zpp::throwing<int> foo(bool success)
 {
     if (!success) {
         // Throws an exception.
-        co_return std::runtime_error("My runtime error");
+        co_yield std::runtime_error("My runtime error");
     }
 
     // Returns a value.
@@ -285,7 +312,7 @@ zpp::throwing<std::string> foobar()
 {
     auto result = co_await bar(false);
     if (result.find("foo succeeded") == std::string::npos) {
-        co_return std::runtime_error("bar() apparently succeeded even though foo() failed");
+        co_yield std::runtime_error("bar() apparently succeeded even though foo() failed");
     }
 
     co_return result;
