@@ -649,6 +649,12 @@ struct exit_condition
     {
     }
 
+    template <typename..., typename Dependent = Type>
+    explicit exit_condition(void_t) requires std::is_void_v<Dependent>
+        : m_error_domain(nullptr)
+    {
+    }
+
     explicit exit_condition(auto && value) :
         m_error_domain(nullptr),
         m_return_value(std::forward<decltype(value)>(value))
@@ -1153,8 +1159,11 @@ public:
      * Construct directly from a value.
      */
     throwing(auto && value) requires
-        std::is_convertible_v<decltype(value), Type>
-        : m_condition(std::forward<decltype(value)>(value))
+        std::is_convertible_v<decltype(value), Type> ||
+        (std::is_void_v<Type> && std::is_same_v<
+            std::remove_cv_t<std::remove_reference_t<decltype(value)>>,
+            void_t>) :
+        m_condition(std::forward<decltype(value)>(value))
     {
     }
 
@@ -1339,7 +1348,13 @@ private:
                     exception_ptr<Allocator>(
                         std::addressof(m_condition.exception()));
                 }
-                return std::forward<Clause>(clause)();
+                if constexpr (std::is_void_v<decltype(std::forward<Clause>(
+                                  clause)())>) {
+                    std::forward<Clause>(clause)();
+                    return void_v;
+                } else {
+                    return std::forward<Clause>(clause)();
+                }
             }
         } else if constexpr (requires {
                                  std::forward<Clause>(clause)(
@@ -1363,7 +1378,16 @@ private:
                     return std::move(*this);
                 }
             } else {
-                return std::forward<Clause>(clause)(m_condition.error());
+                if constexpr (std::is_void_v<decltype(std::forward<Clause>(
+                                  clause)(m_condition.error())
+
+                                                          )>) {
+                    std::forward<Clause>(clause)(m_condition.error());
+                    return void_v;
+                } else {
+                    return std::forward<Clause>(clause)(
+                        m_condition.error());
+                }
             }
         } else if constexpr (requires { error{CatchType{}}; }) {
             if (exception.address ||
@@ -1386,8 +1410,16 @@ private:
                     return std::move(*this);
                 }
             } else {
-                return std::forward<Clause>(clause)(
-                    CatchType{m_condition.error().code()});
+                if constexpr (std::is_void_v<decltype(std::forward<Clause>(
+                                  clause)(CatchType{
+                                  m_condition.error().code()}))>) {
+                    std::forward<Clause>(clause)(
+                        CatchType{m_condition.error().code()});
+                    return void_v;
+                } else {
+                    return std::forward<Clause>(clause)(
+                        CatchType{m_condition.error().code()});
+                }
             }
         } else if constexpr (requires { define_exception<CatchType>(); }) {
             CatchType * catch_object = nullptr;
@@ -1419,7 +1451,13 @@ private:
             } else {
                 exception_ptr<Allocator> exception_disposer(
                     std::addressof(m_condition.exception()));
-                return std::forward<Clause>(clause)(*catch_object);
+                if constexpr (std::is_void_v<decltype(std::forward<Clause>(
+                                  clause)(*catch_object))>) {
+                    std::forward<Clause>(clause)(*catch_object);
+                    return void_v;
+                } else {
+                    return std::forward<Clause>(clause)(*catch_object);
+                }
             }
         } else {
             static_assert(std::is_void_v<CatchType>,
