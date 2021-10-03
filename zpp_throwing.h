@@ -637,13 +637,20 @@ using catch_value_type_t = typename catch_value_type<Type>::type;
 /**
  * The exit condition of the coroutine - A value, or error/exception.
  */
-template <typename Type, typename ExceptionType, typename Allocator>
+template <typename Type, typename Allocator>
 struct exit_condition
 {
-    using exception_type = ExceptionType;
+    using exception_type = exception_object *;
     using error_type = class error;
+    using value_type = std::conditional_t<
+        std::is_void_v<Type>,
+        std::nullptr_t,
+        std::conditional_t<
+            std::is_reference_v<Type>,
+            std::add_pointer_t<std::remove_reference_t<Type>>,
+            Type>>;
 
-    exit_condition() :
+    exit_condition() noexcept :
         m_error_domain(std::addressof(err_domain<rethrow_error>))
     {
     }
@@ -660,11 +667,7 @@ struct exit_condition
     {
     }
 
-    template <typename OtherExceptionType>
-    exit_condition(
-        exit_condition<Type, OtherExceptionType, Allocator> &&
-            other) noexcept(std::is_void_v<Type> ||
-                            std::is_nothrow_move_constructible_v<Type>)
+    exit_condition(exit_condition && other) noexcept
     {
         if (other.is_value()) {
             if constexpr (!std::is_void_v<Type>) {
@@ -677,8 +680,7 @@ struct exit_condition
             }
         } else {
             if (other.is_exception()) {
-                ::new (std::addressof(m_exception))
-                    exception_type(std::move(other.m_exception));
+                m_exception = other.m_exception;
             } else {
                 m_error_code = other.m_error_code;
             }
@@ -690,22 +692,8 @@ struct exit_condition
     {
         if constexpr (!std::is_void_v<Type> &&
                       !std::is_trivially_destructible_v<Type>) {
-            if constexpr (!std::is_trivially_destructible_v<
-                              exception_type>) {
-                if (is_value()) {
-                    m_return_value.~Type();
-                } else if (is_exception()) {
-                    m_exception.~exception_type();
-                }
-            } else {
-                if (is_value()) {
-                    m_return_value.~Type();
-                }
-            }
-        } else if constexpr (!std::is_trivially_destructible_v<
-                                 exception_type>) {
-            if (is_exception()) {
-                m_exception.~exception_type();
+            if (is_value()) {
+                m_return_value.~Type();
             }
         }
     }
@@ -776,18 +764,18 @@ struct exit_condition
 
     /**
      * Exits with a value.
-     * Must not call exit functions exactly once.
+     * Must call exit functions exactly once.
      */
     template <typename..., typename Dependent = Type>
     void
-    exit_with_value(auto && other) requires(!std::is_void_v<Dependent>)
+    exit_with_value(auto && value) requires(!std::is_void_v<Dependent>)
     {
         if constexpr (!std::is_void_v<Type>) {
             if constexpr (!std::is_reference_v<Type>) {
                 ::new (std::addressof(m_return_value))
-                    Type(std::forward<decltype(other)>(other));
+                    Type(std::forward<decltype(value)>(value));
             } else {
-                m_return_value = std::addressof(other);
+                m_return_value = std::addressof(value);
             }
         }
         m_error_domain = nullptr;
@@ -801,7 +789,7 @@ struct exit_condition
 
     /**
      * Exits with exception.
-     * Must not call exit functions exactly once.
+     * Must call exit functions exactly once.
      */
     template <typename Exception>
     auto exit_with_exception(Exception && exception) noexcept
@@ -830,15 +818,12 @@ struct exit_condition
             type m_exception;
         };
 
-        ::new (std::addressof(m_exception)) exception_type(
-            make_exception_object<exception_holder, Allocator>(
-                std::forward<Exception>(exception)));
-
         m_error_domain = std::addressof(err_domain<throwing_exception>);
+        m_exception = make_exception_object<exception_holder, Allocator>(
+            std::forward<Exception>(exception));
 
         if constexpr (std::is_void_v<Allocator>) {
             // Nothing to be done.
-
         } else if constexpr (noexcept(std::declval<Allocator>().allocate(
                                  std::size_t{}))) {
             if (!m_exception) {
@@ -849,7 +834,7 @@ struct exit_condition
 
     /**
      * This must not hold a value or an exception.
-     * Must not call exit functions exactly once.
+     * Must call exit functions exactly once.
      */
     void exit_rethrow() noexcept
     {
@@ -858,7 +843,7 @@ struct exit_condition
 
     /**
      * Exits with an error value.
-     * Must not call exit functions exactly once.
+     * Must call exit functions exactly once.
      */
     void exit_with_error(const error_type & error) noexcept
     {
@@ -868,27 +853,16 @@ struct exit_condition
 
     /**
      * Propagates an exception/error.
-     * Must not call exit functions exactly once, `other` must have an
+     * Must call exit functions exactly once, `other` must have an
      * error or an exception.
      */
-    template <typename OtherType, typename OtherExceptionType>
-    void exit_propagate(
-        exit_condition<OtherType, OtherExceptionType, Allocator> &
-            other) noexcept
+    template <typename OtherType>
+    void
+    exit_propagate(exit_condition<OtherType, Allocator> & other) noexcept
     {
         if (other.is_exception()) {
-            if constexpr (!std::is_same_v<ExceptionType,
-                                          OtherExceptionType> &&
-                          requires { other.m_exception.release(); }) {
-                ::new (std::addressof(m_exception))
-                    exception_type(other.m_exception.release());
-            } else {
-                ::new (std::addressof(m_exception))
-                    exception_type(std::move(other.m_exception));
-            }
+            m_exception = other.m_exception;
         } else {
-            // Since we don't have a value, or exception, error code is the
-            // active member of the union.
             m_error_code = other.m_error_code;
         }
         m_error_domain = other.m_error_domain;
@@ -899,14 +873,7 @@ struct exit_condition
     {
         int m_error_code{};
         exception_type m_exception;
-        std::conditional_t<
-            std::is_void_v<Type>,
-            std::nullptr_t,
-            std::conditional_t<
-                std::is_reference_v<Type>,
-                std::add_pointer_t<std::remove_reference_t<Type>>,
-                Type>>
-            m_return_value;
+        value_type m_return_value;
     };
 };
 
@@ -1658,7 +1625,7 @@ private :
     /**
      * The exit condition of the function.
      */
-    exit_condition<Type, exception_object *, Allocator>
+    exit_condition<Type, Allocator>
         m_condition{};
 };
 
