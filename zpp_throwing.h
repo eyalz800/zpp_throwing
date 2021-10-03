@@ -269,7 +269,7 @@ enum class rethrow_error
 };
 
 template <>
-inline constexpr auto err_domain<rethrow_error> = zpp::make_error_domain(
+inline constexpr auto err_domain<rethrow_error> = make_error_domain(
     {}, rethrow_error{}, [](auto) constexpr->std::string_view {
         return {};
     });
@@ -279,11 +279,10 @@ enum class throwing_exception
 };
 
 template <>
-inline constexpr auto err_domain<throwing_exception> =
-    zpp::make_error_domain(
-        {}, throwing_exception{}, [](auto) constexpr->std::string_view {
-            return {};
-        });
+inline constexpr auto err_domain<throwing_exception> = make_error_domain(
+    {}, throwing_exception{}, [](auto) constexpr->std::string_view {
+        return {};
+    });
 /**
  * @}
  */
