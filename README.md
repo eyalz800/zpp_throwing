@@ -345,6 +345,8 @@ to the constructor or other means such as factory functions.
 4. The code requires `C++20` and above.
 5. You must catch every dynamic exception that you throw, otherwise a memory leak of the exception object
 will occur, this is to optimize the non-trivial destruction that happens when propagating the exception.
+6. Assumes allocators are stateless, don't require size on deallocation, and return max aligned storage,
+- for simplicity - may change in the future.
 
 Final Word
 ----------

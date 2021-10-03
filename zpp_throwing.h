@@ -359,9 +359,7 @@ struct exceptioin_object_delete
             Allocator allocator;
             std::allocator_traits<Allocator>::destroy(allocator, pointer);
             std::allocator_traits<Allocator>::deallocate(
-                allocator,
-                reinterpret_cast<std::byte *>(pointer),
-                sizeof(*pointer));
+                allocator, reinterpret_cast<std::byte *>(pointer), 0);
         }
     }
 };
@@ -369,30 +367,6 @@ struct exceptioin_object_delete
 template <typename Allocator>
 using exception_ptr =
     std::unique_ptr<exception_object, exceptioin_object_delete<Allocator>>;
-
-template <typename Type, typename Allocator>
-auto make_exception_ptr(auto &&... arguments)
-{
-    if constexpr (std::is_void_v<Allocator>) {
-        return exception_ptr<Allocator>(
-            new Type(std::forward<decltype(arguments)>(arguments)...));
-    } else {
-        Allocator allocator;
-        auto allocated = std::allocator_traits<Allocator>::allocate(
-            allocator, sizeof(Type));
-        if (!allocated) {
-            return exception_ptr<Allocator>(nullptr);
-        }
-
-        std::allocator_traits<Allocator>::construct(
-            allocator,
-            reinterpret_cast<Type *>(allocated),
-            std::forward<decltype(arguments)>(arguments)...);
-
-        return exception_ptr<Allocator>(
-            reinterpret_cast<Type *>(allocated));
-    }
-}
 
 template <typename Type, typename Allocator>
 auto make_exception_object(auto &&... arguments)
@@ -405,7 +379,7 @@ auto make_exception_object(auto &&... arguments)
         auto allocated = std::allocator_traits<Allocator>::allocate(
             allocator, sizeof(Type));
         if (!allocated) {
-            return exception_ptr<Allocator>(nullptr);
+            return static_cast<exception_object *>(nullptr);
         }
 
         std::allocator_traits<Allocator>::construct(
