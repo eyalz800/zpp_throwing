@@ -653,12 +653,8 @@ struct exit_condition
                 }
             }
         } else {
-            if (other.is_exception()) {
-                m_exception = other.m_exception;
-            } else {
-                m_error_code = other.m_error_code;
-            }
             m_error_domain = other.m_error_domain;
+            std::memcpy(&m_error, &other.m_error, sizeof(m_error));
         }
     }
 
@@ -728,12 +724,12 @@ struct exit_condition
 
     auto & exception() noexcept
     {
-        return *m_exception;
+        return *m_error.exception;
     }
 
     auto error() const noexcept
     {
-        return error_type{m_error_code, *m_error_domain};
+        return error_type{m_error.code, *m_error_domain};
     }
 
     /**
@@ -793,14 +789,15 @@ struct exit_condition
         };
 
         m_error_domain = std::addressof(err_domain<throwing_exception>);
-        m_exception = make_exception_object<exception_holder, Allocator>(
-            std::forward<Exception>(exception));
+        m_error.exception =
+            make_exception_object<exception_holder, Allocator>(
+                std::forward<Exception>(exception));
 
         if constexpr (std::is_void_v<Allocator>) {
             // Nothing to be done.
         } else if constexpr (noexcept(std::declval<Allocator>().allocate(
                                  std::size_t{}))) {
-            if (!m_exception) {
+            if (!m_error.exception) {
                 exit_with_error(std::errc::not_enough_memory);
             }
         }
@@ -822,7 +819,7 @@ struct exit_condition
     void exit_with_error(const error_type & error) noexcept
     {
         m_error_domain = std::addressof(error.domain());
-        m_error_code = error.code();
+        m_error.code = error.code();
     }
 
     /**
@@ -834,19 +831,21 @@ struct exit_condition
     void
     exit_propagate(exit_condition<OtherType, Allocator> & other) noexcept
     {
-        if (other.is_exception()) {
-            m_exception = other.m_exception;
-        } else {
-            m_error_code = other.m_error_code;
-        }
         m_error_domain = other.m_error_domain;
+        std::memcpy(&m_error, &other.m_error, sizeof(m_error));
     }
 
     const error_domain * m_error_domain{};
+
+    union error_storage
+    {
+        int code{};
+        exception_type exception;
+    };
+
     union
     {
-        int m_error_code{};
-        exception_type m_exception;
+        error_storage m_error;
         value_type m_return_value;
     };
 };
