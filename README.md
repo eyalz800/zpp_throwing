@@ -334,6 +334,13 @@ int main()
 }
 ```
 
+Compiling and Running The Tests
+-------------------------------
+Execute `./zpp.mk -j` in the test folder. You can find the output in the `out` directory.
+
+Please make sure that `clang++` points to `clang++-12` or above.
+For more info about this build system see [here](https://github.com/eyalz800/zpp_mk).
+
 Limitations / Caveats
 ---------------------
 1. The code currently assumes that no exceptions can ever be thrown and as such
