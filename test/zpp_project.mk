@@ -14,10 +14,10 @@ endif
 ifeq ($(ZPP_PROJECT_FLAGS), true)
 ZPP_FLAGS := \
 	$(patsubst %, -I%, $(shell find . -type d -name "inc" -or -name "include")) \
-	-pedantic -Wall -Wextra -Werror -fPIE -Isrc/gtest -pthread -O2
-ZPP_FLAGS_DEBUG := -g -fsanitize=address
+	-pedantic -Wall -Wextra -Werror -fPIE -Isrc/gtest -pthread
+ZPP_FLAGS_DEBUG := -g -fsanitize=address -O2
 ZPP_FLAGS_RELEASE := \
-	-O2 -flto -ffunction-sections \
+	-O2 -ffunction-sections \
 	-fdata-sections -fvisibility=hidden
 ZPP_CFLAGS := $(ZPP_FLAGS) -std=c11
 ZPP_CFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
@@ -31,10 +31,17 @@ ZPP_CXXMFLAGS_RELEASE :=
 ZPP_ASFLAGS := $(ZPP_FLAGS) -x assembler-with-cpp
 ZPP_ASFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
 ZPP_ASFLAGS_RELEASE := $(ZPP_FLAGS_RELEASE)
+ifneq ($(shell uname -s), Darwin)
 ZPP_LFLAGS := $(ZPP_FLAGS) $(ZPP_CXXFLAGS) -pie -Wl,--no-undefined
 ZPP_LFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
 ZPP_LFLAGS_RELEASE := $(ZPP_FLAGS_RELEASE) \
-	-Wl,--strip-all -Wl,-flto -Wl,--gc-sections
+	-Wl,--strip-all -Wl,--gc-sections
+else
+ZPP_LFLAGS := $(ZPP_FLAGS) $(ZPP_CXXFLAGS)
+ZPP_LFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
+ZPP_LFLAGS_RELEASE := $(ZPP_FLAGS_RELEASE) \
+	-Wl,-dead_strip
+endif
 endif
 
 ifeq ($(ZPP_PROJECT_RULES), true)
