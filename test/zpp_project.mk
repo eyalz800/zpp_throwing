@@ -37,10 +37,10 @@ ZPP_LFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
 ZPP_LFLAGS_RELEASE := $(ZPP_FLAGS_RELEASE) \
 	-Wl,--strip-all -Wl,--gc-sections
 else
-ZPP_LFLAGS := $(ZPP_FLAGS) $(ZPP_CXXFLAGS)
+ZPP_LFLAGS := $(ZPP_FLAGS) $(ZPP_CXXFLAGS) -fuse-ld=lld
 ZPP_LFLAGS_DEBUG := $(ZPP_FLAGS_DEBUG)
 ZPP_LFLAGS_RELEASE := $(ZPP_FLAGS_RELEASE) \
-	-Wl,-dead_strip
+	-Wl,-dead_strip -Wl,--strip-all
 endif
 endif
 
