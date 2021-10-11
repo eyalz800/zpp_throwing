@@ -1,6 +1,7 @@
 #ifndef ZPP_THROWING_H
 #define ZPP_THROWING_H
 
+#include <cstring>
 #include <memory>
 #include <new>
 #include <stdexcept>
