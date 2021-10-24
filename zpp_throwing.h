@@ -836,14 +836,13 @@ struct exit_condition
         std::memcpy(&m_error, &other.m_error, sizeof(m_error));
     }
 
-    const error_domain * m_error_domain{};
-
     union error_storage
     {
-        int code{};
+        int code;
         exception_type exception;
     };
 
+    const error_domain * m_error_domain{};
     union
     {
         error_storage m_error;
