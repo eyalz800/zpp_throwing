@@ -7,18 +7,22 @@ strategy:
       VM_IMAGE: 'ubuntu-18.04'
       OPERATING_SYSTEM: 'linux'
       CLANG_VERSION: '12'
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
     ubuntu-20.04:
       VM_IMAGE: 'ubuntu-20.04'
       OPERATING_SYSTEM: 'linux'
       CLANG_VERSION: '12'
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
     macOS-10.14:
       VM_IMAGE: 'macOS-10.14'
       OPERATING_SYSTEM: 'mac-os'
       CLANG_VERSION: '12'
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
     macOS-10.15:
       VM_IMAGE: 'macOS-10.15'
       OPERATING_SYSTEM: 'mac-os'
       CLANG_VERSION: '12'
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
 
 pool:
   vmImage: $(VM_IMAGE)
