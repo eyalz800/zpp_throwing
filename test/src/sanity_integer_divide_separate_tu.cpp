@@ -1,22 +1,6 @@
 #include "test.h"
 
-zpp::throwing<int> integer_divide(int x, int y)
-{
-    if (y == 0) {
-        co_yield std::overflow_error("Divide by zero!");
-    } else if (x % y != 0) {
-        co_yield std::range_error("Result is not an integer!");
-    }
-    co_return x / y;
-}
-
-zpp::throwing<bool> integer_divide_equals(int x, int y, int z)
-{
-    if (co_await integer_divide(x, y) == z) {
-        co_return true;
-    }
-    co_return false;
-}
+zpp::throwing<bool> integer_divide_equals(int x, int y, int z);
 
 static int test_integer_divide_equals(int x, int y, int z)
 {
@@ -35,7 +19,7 @@ static int test_integer_divide_equals(int x, int y, int z)
     });
 }
 
-TEST(sanity_integer_divide, integer_divide)
+TEST(sanity_integer_divide, integer_divide_separate_tu)
 {
     EXPECT_EQ(test_integer_divide_equals(4, 2, 2), 1);
     EXPECT_EQ(test_integer_divide_equals(4, 2, 1), 2);
