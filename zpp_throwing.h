@@ -1136,7 +1136,7 @@ public:
     /**
      * Await is ready if there is no exception.
      */
-    bool await_ready()
+    bool await_ready() noexcept
     {
         return m_condition.success();
     }
