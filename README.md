@@ -76,7 +76,7 @@ zpp::throwing<std::string> bar(bool success)
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&](const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
         co_yield std::runtime_error("Foo really failed");
     });
@@ -94,7 +94,7 @@ zpp::throwing<std::string> bar(bool success)
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&](const std::runtime_error & error) -> zpp::throwing<std::string> {
         cout << "Runtime error caught: " << error.what() << '\n';
         co_yield zpp::rethrow;
     });
@@ -110,7 +110,7 @@ zpp::throwing<std::string> bar(bool success)
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }, [&] (const std::logic_error & error) -> zpp::throwing<std::string> {
+    }, [&](const std::logic_error & error) -> zpp::throwing<std::string> {
         std::cout << "Logic error caught: " << error.what() << '\n';
         co_yield std::runtime_error("Foo really failed");
     });
@@ -176,7 +176,7 @@ int main()
     }, [](zpp::error error) {
         std::cout << "Error: " << error.code() <<
             " [" << error.domain().name() << "]: " << error.message() << '\n';
-    }, [](){
+    }, []() {
         /* catch all */
     });
 }
@@ -227,7 +227,7 @@ int main()
                 " [" << my_error.domain().name() << "]: " << my_error.message() << '\n';
         }
         }
-    }, [](){
+    }, []() {
         /* catch all */
     });
 }
@@ -303,7 +303,7 @@ zpp::throwing<std::string> bar(bool success)
         auto foo_result = co_await foo(success);
         std::cout << "Foo succeeded" << foo_result << '\n';
         co_return "foo succeeded";
-    }, [&] (const std::runtime_error & error) -> zpp::throwing<std::string> {
+    }, [&](const std::runtime_error & error) -> zpp::throwing<std::string> {
         std::cout << "Runtime error caught: " << error.what() << '\n';
         co_return "foo failed";
     });

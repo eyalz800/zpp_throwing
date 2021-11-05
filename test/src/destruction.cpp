@@ -66,23 +66,28 @@ struct zpp::define_exception<destruction_exception>
 
 TEST(destruction, with_exception)
 {
+    fail_unless_triggered trigger{2};
     bool is_destroyed = false;
 
     return zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
         destruction_resource resource(is_destroyed);
         co_yield std::runtime_error("My runtime error!");
 
         [] { FAIL(); }();
     }, [&] {
         EXPECT_EQ(is_destroyed, true);
+        trigger.trigger();
     });
 }
 
 TEST(destruction, without_exception)
 {
+    fail_unless_triggered trigger{1};
     bool is_destroyed = false;
 
     zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
         destruction_resource resource(is_destroyed);
         co_return;
     }, [&] {
@@ -94,10 +99,12 @@ TEST(destruction, without_exception)
 
 TEST(destruction, exception_destruction)
 {
+    fail_unless_triggered trigger{2};
     bool is_resource_destroyed = false;
     bool is_exception_destroyed = false;
 
     zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
         destruction_resource resource(is_resource_destroyed);
         EXPECT_EQ(is_resource_destroyed, false);
 
@@ -111,6 +118,7 @@ TEST(destruction, exception_destruction)
     }, [&](const destruction_exception &) {
         EXPECT_EQ(is_resource_destroyed, true);
         EXPECT_EQ(is_exception_destroyed, false);
+        trigger.trigger();
     }, [&] {
         FAIL();
     });
@@ -121,15 +129,18 @@ TEST(destruction, exception_destruction)
 
 TEST(destruction, exception_destruction_catch_all_nothrow)
 {
+    fail_unless_triggered trigger{3};
     bool is_resource_destroyed = false;
     bool is_exception_destroyed = false;
 
     zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
         destruction_resource resource(is_resource_destroyed);
         EXPECT_EQ(is_resource_destroyed, false);
         EXPECT_EQ(is_exception_destroyed, false);
 
         co_await [&]() -> zpp::throwing<void> {
+            trigger.trigger();
             co_yield destruction_exception(is_exception_destroyed);
 
             [] { FAIL(); }();
@@ -139,6 +150,7 @@ TEST(destruction, exception_destruction_catch_all_nothrow)
     }, [&] {
         EXPECT_EQ(is_resource_destroyed, true);
         EXPECT_EQ(is_exception_destroyed, true);
+        trigger.trigger();
     });
 
     EXPECT_EQ(is_exception_destroyed, true);
@@ -147,16 +159,20 @@ TEST(destruction, exception_destruction_catch_all_nothrow)
 
 TEST(destruction, exception_destruction_catch_all_may_throw)
 {
+    fail_unless_triggered trigger{4};
     bool is_resource_destroyed = false;
     bool is_exception_destroyed = false;
 
     zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
         return zpp::try_catch([&]() -> zpp::throwing<void> {
+            trigger.trigger();
             destruction_resource resource(is_resource_destroyed);
             EXPECT_EQ(is_resource_destroyed, false);
             EXPECT_EQ(is_exception_destroyed, false);
 
             co_await [&]() -> zpp::throwing<void> {
+                trigger.trigger();
                 co_yield destruction_exception(is_exception_destroyed);
 
                 [] { FAIL(); }();
@@ -164,6 +180,7 @@ TEST(destruction, exception_destruction_catch_all_may_throw)
 
             [] { FAIL(); }();
         }, [&]() -> zpp::throwing<void> {
+            trigger.trigger();
             EXPECT_EQ(is_resource_destroyed, true);
             EXPECT_EQ(is_exception_destroyed, false);
             co_return;

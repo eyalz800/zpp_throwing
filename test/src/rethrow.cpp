@@ -16,18 +16,24 @@ static zpp::throwing<int> throw_error()
 
 TEST(rethrow, rethrow)
 {
-    return zpp::try_catch([]() -> zpp::throwing<void> {
+    fail_unless_triggered trigger{4};
+    return zpp::try_catch([&]() -> zpp::throwing<void> {
+        trigger.trigger();
 
-        co_await zpp::try_catch([]() -> zpp::throwing<void> {
+        co_await zpp::try_catch([&]() -> zpp::throwing<void> {
+            trigger.trigger();
             co_await throw_exception();
-        }, [](const std::runtime_error &) -> zpp::throwing<void> {
+        }, [&](const std::runtime_error &) -> zpp::throwing<void> {
+            trigger.trigger();
             co_yield zpp::rethrow;
+            [] { FAIL(); }();
         });
 
         [] { FAIL(); }();
-    }, [](const std::runtime_error & error) {
+    }, [&](const std::runtime_error & error) {
         EXPECT_STREQ(error.what(), "My runtime error!");
-    }, []() {
+        trigger.trigger();
+    }, [&]() {
         FAIL();
     });
 }
