@@ -110,7 +110,7 @@ TEST(catch, test_catch_derived_base_fallback_order_priority)
 
 TEST(catch, test_uncaght_propagate)
 {
-    zpp::try_catch([&]() -> zpp::throwing<void> {
+    return zpp::try_catch([&]() -> zpp::throwing<void> {
 
         return zpp::try_catch([&]() -> zpp::throwing<void> {
             co_yield std::runtime_error("My runtime error!");
