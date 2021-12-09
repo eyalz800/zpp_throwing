@@ -41,7 +41,7 @@ public:
     /**
      * Return the error message for a given error code.
      * For success codes, it is unspecified what value is returned.
-     * For convienience, you may return zpp::error::no_error for success.
+     * For convenience, you may return zpp::error::no_error for success.
      * All other codes must return non empty string views.
      */
     virtual std::string_view
@@ -350,7 +350,7 @@ template <typename Type>
 using define_exception_t = typename define_exception<Type>::type;
 
 template <typename Allocator>
-struct exceptioin_object_delete
+struct exception_object_delete
 {
     void operator()(exception_object * pointer)
     {
@@ -367,7 +367,7 @@ struct exceptioin_object_delete
 
 template <typename Allocator>
 using exception_ptr =
-    std::unique_ptr<exception_object, exceptioin_object_delete<Allocator>>;
+    std::unique_ptr<exception_object, exception_object_delete<Allocator>>;
 
 template <typename Type, typename Allocator>
 auto make_exception_object(auto &&... arguments)
@@ -934,7 +934,7 @@ public:
         }
 
         /**
-         * Rethrow from exising.
+         * Rethrow from existing.
          */
         template <typename ExitCondition>
         void throw_it(

@@ -8,13 +8,13 @@ C++ exceptions and RTTI are often not enabled in many environments, require outs
 unwanted cost (i.e exceptions failure path is often considered very slow, RTTI often grows binary size and adds type names to the program binaries which may hurt confidentiality).
 Most implementations of C++ exceptions also use the RTTI implementation, enlarging the price to be paid for using exceptions.
 
-Exceptions are however very convenient, particularily the automatic error propagation which helps makes code clearer and easier to read, write and maintain.
+Exceptions are however very convenient, particularly the automatic error propagation which helps makes code clearer and easier to read, write and maintain.
 In the journey to try and get a working alternative to standard C++ exceptions for error handling, there are many modern return value based facilities out there,
 and even macro based utilities to do the "automatic" propagation. There are also known papers and proposals to improve/introduce new and better form of exceptions
 in C++ which I hope will become part of future standard.
 
-So far there is no solution existing today that I know of, that is "close enough" to the experience of using plain C++ exceptions, that I consider clean, meaing,
-with automatic and invisible error propagaion, and without polluting the code with macros.
+So far there is no solution existing today that I know of, that is "close enough" to the experience of using plain C++ exceptions, that I consider clean, meaning,
+with automatic and invisible error propagation, and without polluting the code with macros.
 
 Motivation
 ----------
@@ -86,7 +86,7 @@ zpp::throwing<std::string> bar(bool success)
 Note that the lambda function sent as a catch block now returns a `zpp::throwing<std::string>`
 which allows it to throw exceptions using `co_return`.
 
-It is even possible to rethrow the caught excpetion using `zpp::rethrow`:
+It is even possible to rethrow the caught exception using `zpp::rethrow`:
 ```cpp
 zpp::throwing<std::string> bar(bool success)
 {
@@ -236,7 +236,7 @@ int main()
 ### Throwing Exceptions with `co_yield` vs `co_return`
 You may throw also with `co_return`. The library will understand whether you are actually returning
 a value or throwing, by the type of the return expression. Theoretically `co_return` should generate
-better code because it does not add a suspend point but it is highly optimizable, and the
+better code because it does not add a suspend point but it is highly optimize-able, and the
 library actually takes care of destroying the coroutine on the first suspend.
 
 -Example:
