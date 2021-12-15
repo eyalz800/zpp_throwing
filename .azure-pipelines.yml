@@ -18,6 +18,11 @@ strategy:
       OPERATING_SYSTEM: 'mac-os'
       CLANG_VERSION: '12'
       ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
+    macOS-11:
+      VM_IMAGE: 'macOS-11'
+      OPERATING_SYSTEM: 'mac-os'
+      CLANG_VERSION: '12'
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
 
 pool:
   vmImage: $(VM_IMAGE)
