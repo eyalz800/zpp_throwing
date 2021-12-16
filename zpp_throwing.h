@@ -625,24 +625,24 @@ struct exit_condition
             std::add_pointer_t<std::remove_reference_t<Type>>,
             Type>>;
 
-    exit_condition() noexcept :
+    constexpr exit_condition() noexcept :
         m_error_domain(std::addressof(err_domain<rethrow_error>))
     {
     }
 
     template <typename..., typename Dependent = Type>
-    explicit exit_condition(void_t) requires std::is_void_v<Dependent>
+    constexpr explicit exit_condition(void_t) requires std::is_void_v<Dependent>
         : m_error_domain(nullptr)
     {
     }
 
-    explicit exit_condition(auto && value) :
+    constexpr explicit exit_condition(auto && value) :
         m_error_domain(nullptr),
         m_return_value(std::forward<decltype(value)>(value))
     {
     }
 
-    exit_condition(exit_condition && other) noexcept
+    constexpr exit_condition(exit_condition && other) noexcept
     {
         if (other.is_value()) {
             if constexpr (!std::is_void_v<Type>) {
@@ -659,7 +659,7 @@ struct exit_condition
         }
     }
 
-    ~exit_condition()
+    constexpr ~exit_condition()
     {
         if constexpr (!std::is_void_v<Type> &&
                       !std::is_trivially_destructible_v<Type>) {
@@ -669,43 +669,43 @@ struct exit_condition
         }
     }
 
-    bool is_exception() const noexcept
+    constexpr bool is_exception() const noexcept
     {
         return m_error_domain ==
                std::addressof(err_domain<throwing_exception>);
     }
 
-    bool is_value() const noexcept
+    constexpr bool is_value() const noexcept
     {
         return !m_error_domain;
     }
 
-    bool success() const noexcept
+    constexpr bool success() const noexcept
     {
         return !m_error_domain;
     }
 
-    bool failure() const noexcept
+    constexpr bool failure() const noexcept
     {
         return m_error_domain;
     }
 
-    bool is_error() const noexcept
+    constexpr bool is_error() const noexcept
     {
         return !is_value() && !is_exception();
     }
 
-    auto is_rethrow() const noexcept
+    constexpr auto is_rethrow() const noexcept
     {
         return m_error_domain == std::addressof(err_domain<rethrow_error>);
     }
 
-    explicit operator bool() const noexcept
+    constexpr explicit operator bool() const noexcept
     {
         return success();
     }
 
-    decltype(auto) value() && noexcept
+    constexpr decltype(auto) value() && noexcept
     {
         if constexpr (std::is_same_v<Type, decltype(m_return_value)>) {
             return std::forward<Type>(m_return_value);
@@ -714,7 +714,7 @@ struct exit_condition
         }
     }
 
-    decltype(auto) value() & noexcept
+    constexpr decltype(auto) value() & noexcept
     {
         if constexpr (std::is_same_v<Type, decltype(m_return_value)>) {
             return (m_return_value);
@@ -723,12 +723,12 @@ struct exit_condition
         }
     }
 
-    auto & exception() noexcept
+    constexpr auto & exception() noexcept
     {
         return *m_error.exception;
     }
 
-    auto error() const noexcept
+    constexpr auto error() const noexcept
     {
         return error_type{m_error.code, *m_error_domain};
     }
@@ -738,7 +738,7 @@ struct exit_condition
      * Must call exit functions exactly once.
      */
     template <typename..., typename Dependent = Type>
-    void
+    constexpr void
     exit_with_value(auto && value) requires(!std::is_void_v<Dependent>)
     {
         if constexpr (!std::is_void_v<Type>) {
@@ -753,7 +753,7 @@ struct exit_condition
     }
 
     template <typename..., typename Dependent = Type>
-    void exit_with_value() requires std::is_void_v<Dependent>
+    constexpr void exit_with_value() requires std::is_void_v<Dependent>
     {
         m_error_domain = nullptr;
     }
@@ -808,7 +808,7 @@ struct exit_condition
      * This must not hold a value or an exception.
      * Must call exit functions exactly once.
      */
-    void exit_rethrow() noexcept
+    constexpr void exit_rethrow() noexcept
     {
         m_error_domain = std::addressof(err_domain<rethrow_error>);
     }
@@ -817,7 +817,7 @@ struct exit_condition
      * Exits with an error value.
      * Must call exit functions exactly once.
      */
-    void exit_with_error(const error_type & error) noexcept
+    constexpr void exit_with_error(const error_type & error) noexcept
     {
         m_error_domain = std::addressof(error.domain());
         m_error.code = error.code();
@@ -829,7 +829,7 @@ struct exit_condition
      * error or an exception.
      */
     template <typename OtherType>
-    void
+    constexpr void
     exit_propagate(exit_condition<OtherType, Allocator> & other) noexcept
     {
         m_error_domain = other.m_error_domain;
@@ -1081,7 +1081,7 @@ public:
     /**
      * Constructor for out of memory scenario.
      */
-    explicit throwing(std::nullptr_t) noexcept
+    constexpr explicit throwing(std::nullptr_t) noexcept
     {
         m_condition.exit_with_error(std::errc::not_enough_memory);
     }
@@ -1089,7 +1089,7 @@ public:
     /**
      * Construct from the coroutine handle.
      */
-    explicit throwing(promise_type & promise) noexcept
+    constexpr explicit throwing(promise_type & promise) noexcept
     {
         promise.m_return_object = this;
     }
@@ -1097,7 +1097,7 @@ public:
     /**
      * Construct directly from a value.
      */
-    throwing(auto && value) requires
+    constexpr throwing(auto && value) requires
         std::is_convertible_v<decltype(value), Type> ||
         (std::is_void_v<Type> && std::is_same_v<
             std::remove_cv_t<std::remove_reference_t<decltype(value)>>,
@@ -1109,7 +1109,7 @@ public:
     /**
      * Construct directly from an error/exception.
      */
-    throwing(auto && value) requires requires(promise_type & promise)
+    constexpr throwing(auto && value) requires requires(promise_type & promise)
     {
         promise.throw_it(std::forward<decltype(value)>(value));
     }
@@ -1136,7 +1136,7 @@ public:
     /**
      * Await is ready if there is no exception.
      */
-    bool await_ready() noexcept
+    constexpr bool await_ready() noexcept
     {
         return m_condition.success();
     }
@@ -1168,7 +1168,7 @@ public:
      * Returns true if value is stored, otherwise, an
      * exception/error is stored.
      */
-    explicit operator bool() const noexcept
+    constexpr explicit operator bool() const noexcept
     {
         return m_condition.success();
     }
@@ -1177,7 +1177,7 @@ public:
      * Returns true if value is stored, otherwise, an
      * exception/error is stored.
      */
-    bool success() const noexcept
+    constexpr bool success() const noexcept
     {
         return m_condition.success();
     }
@@ -1186,7 +1186,7 @@ public:
      * Returns true if exception/error is stored, otherwise,
      * value is stored.
      */
-    bool failure() const noexcept
+    constexpr bool failure() const noexcept
     {
         return m_condition.failure();
     }
@@ -1195,7 +1195,7 @@ public:
      * Returns the stored value, the behavior
      * is undefined if there is an exception/error stored.
      */
-    decltype(auto) value() && noexcept
+    constexpr decltype(auto) value() && noexcept
     {
         if constexpr (std::is_void_v<Type>) {
             return;
@@ -1208,7 +1208,7 @@ public:
      * Returns the stored value, the behavior
      * is undefined if there is an exception/error stored.
      */
-    decltype(auto) value() & noexcept
+    constexpr decltype(auto) value() & noexcept
     {
         if constexpr (std::is_void_v<Type>) {
             return;
@@ -1264,9 +1264,10 @@ private:
             typename std::invoke_result_t<
                 decltype(std::get<sizeof...(Clauses)>(
                     std::declval<std::tuple<Clause, Clauses...>>()))>;
-        })throwing catch_exception_object(const dynamic_object & exception,
-                                          Clause && clause,
-                                          Clauses &&... clauses)
+        }) constexpr throwing
+        catch_exception_object(const dynamic_object & exception,
+                               Clause && clause,
+                               Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(0 == sizeof...(Clauses),
@@ -1417,9 +1418,9 @@ private:
               typename... Clauses,
               typename...,
               typename CatchType = detail::catch_value_type_t<Clause>>
-    Type catch_exception_object(const dynamic_object & exception,
-                                Clause && clause,
-                                Clauses &&... clauses)
+    constexpr Type catch_exception_object(const dynamic_object & exception,
+                                          Clause && clause,
+                                          Clauses &&... clauses)
     {
         if constexpr (std::is_void_v<CatchType>) {
             static_assert(!sizeof...(Clauses),
@@ -1485,7 +1486,7 @@ private:
     /**
      * Returns true if rethrowing, else false.
      */
-    bool is_rethrow() const noexcept
+    constexpr bool is_rethrow() const noexcept
     {
         return m_condition.is_rethrow();
     }
@@ -1501,7 +1502,8 @@ public:
      * for catch clauses that may themselves throw.
      */
     template <typename... Clauses>
-    inline throwing catches(Clauses &&... clauses) requires requires
+    constexpr inline throwing
+    catches(Clauses &&... clauses) requires requires
     {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
@@ -1534,7 +1536,8 @@ public:
      * for catch clauses that do not throw.
      */
     template <typename... Clauses>
-    inline Type catches(Clauses &&... clauses) requires(!requires {
+    constexpr inline Type
+    catches(Clauses &&... clauses) requires(!requires {
         typename decltype(this->catch_exception_object(
             exception_object::null_dynamic_object,
             std::forward<Clauses>(clauses)...))::zpp_throwing_tag;
@@ -1575,7 +1578,7 @@ private :
  * handle being implicitly destroyed within the function.
  */
 template <typename Clause>
-auto try_catch(Clause && clause)
+constexpr auto try_catch(Clause && clause)
 {
     if constexpr (requires {
                       typename std::invoke_result_t<
@@ -1589,7 +1592,7 @@ auto try_catch(Clause && clause)
 }
 
 template <typename TryClause, typename... CatchClause>
-decltype(auto) try_catch(
+constexpr decltype(auto) try_catch(
     TryClause && try_clause,
     CatchClause &&... catch_clause) requires(sizeof...(CatchClause) != 0)
 {
