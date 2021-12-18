@@ -32,8 +32,8 @@ steps:
     curl -fLo llvm.sh https://apt.llvm.org/llvm.sh
     chmod +x ./llvm.sh
     sudo ./llvm.sh $(CLANG_VERSION)
-    sudo apt install -y libc++-12-dev libc++abi-$(CLANG_VERSION)-dev libunwind-$(CLANG_VERSION)-dev
-    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-12 1200
+    sudo apt install -y libc++-$(CLANG_VERSION)-dev libc++abi-$(CLANG_VERSION)-dev libunwind-$(CLANG_VERSION)-dev
+    sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-$(CLANG_VERSION) $(CLANG_VERSION)00
   displayName: 'install (linux)'
   condition: eq(variables['OPERATING_SYSTEM'], 'linux')
 
