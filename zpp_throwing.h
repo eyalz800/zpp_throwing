@@ -1097,11 +1097,15 @@ public:
     /**
      * Construct directly from a value.
      */
-    constexpr throwing(auto && value) requires
-        std::is_convertible_v<decltype(value), Type> ||
-        (std::is_void_v<Type> && std::is_same_v<
-            std::remove_cv_t<std::remove_reference_t<decltype(value)>>,
-            void_t>) :
+    constexpr throwing(auto && value) requires(
+        std::is_convertible_v<decltype(value), Type> &&
+        !requires(promise_type & promise) {
+            promise.throw_it(std::forward<decltype(value)>(value));
+        }) ||
+        (std::is_void_v<Type> &&
+         std::is_same_v<
+             std::remove_cv_t<std::remove_reference_t<decltype(value)>>,
+             void_t>) :
         m_condition(std::forward<decltype(value)>(value))
     {
     }
