@@ -1,5 +1,7 @@
 zpp::throwing
 =============
+
+[![.github/workflows/actions.yml](https://github.com/eyalz800/zpp_throwing/actions/workflows/actions.yml/badge.svg)](https://github.com/eyalz800/zpp_throwing/actions/workflows/actions.yml)
 [![Build Status](https://dev.azure.com/eyalz800/zpp_throwing/_apis/build/status/eyalz800.zpp_throwing?branchName=main)](https://dev.azure.com/eyalz800/zpp_throwing/_build/latest?definitionId=8&branchName=main)
 
 Abstract

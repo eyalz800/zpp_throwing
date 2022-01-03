@@ -1,0 +1,99 @@
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    - cron: '0 8 * * *'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.config.vm_image }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Clang 12 Ubuntu
+            compiler: clang
+            compiler_version: 12
+            make: make
+            mode: release
+            os: ubuntu
+            vm_image: ubuntu-18.04
+          - name: Clang 13 Ubuntu
+            compiler: clang
+            compiler_version: 13
+            make: make
+            mode: release
+            os: ubuntu
+            vm_image: ubuntu-18.04
+          - name: Clang 12 Ubuntu
+            compiler: clang
+            compiler_version: 12
+            make: make
+            mode: release
+            os: ubuntu
+            vm_image: ubuntu-20.04
+          - name: Clang 13 Ubuntu
+            compiler: clang
+            compiler_version: 13
+            make: make
+            mode: release
+            os: ubuntu
+            vm_image: ubuntu-20.04
+          - name: Clang 12 MacOS
+            compiler: clang
+            compiler_version: 12
+            make: gmake
+            mode: release
+            os: macos
+            vm_image: macos-10.15
+          - name: Clang 13 MacOS
+            compiler: clang
+            compiler_version: 13
+            make: gmake
+            mode: release
+            os: macos
+            vm_image: macos-10.15
+          - name: Clang 12 MacOS
+            compiler: clang
+            compiler_version: 12
+            make: gmake
+            mode: release
+            os: macos
+            vm_image: macos-11
+          - name: Clang 13 MacOS
+            compiler: clang
+            compiler_version: 13
+            make: gmake
+            mode: release
+            os: macos
+            vm_image: macos-11
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: 'install (ubuntu, clang)'
+        if: matrix.config.os == 'ubuntu' && matrix.config.compiler == 'clang'
+        run: |
+          curl -fLo llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x ./llvm.sh
+          sudo ./llvm.sh ${{ matrix.config.compiler_version }}
+          sudo apt install -y libc++-${{ matrix.config.compiler_version }}-dev libc++abi-${{ matrix.config.compiler_version }}-dev libunwind-${{ matrix.config.compiler_version }}-dev
+          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${{ matrix.config.compiler_version }} ${{ matrix.config.compiler_version }}00
+      - name: 'install (macos)'
+        if: matrix.config.os == 'macos'
+        run: |
+          brew install llvm@${{ matrix.config.compiler_version }} make
+          echo "PATH=/usr/local/opt/llvm/bin:$PATH" >> $GITHUB_ENV
+      - name: 'compile'
+        run: |
+          ${{ matrix.config.make }} -C test -f zpp.mk -j mode=${{ matrix.config.mode }} ZPP_BITS_AUTODETECT_MEMBERS_MODE=${{ matrix.config.test_autodetect_members }}
+      - name: 'test'
+        run: |
+          ./test/out/${{ matrix.config.mode }}/default/output
+
