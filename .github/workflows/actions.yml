@@ -91,7 +91,7 @@ jobs:
         if: matrix.config.os == 'macos'
         run: |
           brew install llvm@${{ matrix.config.compiler_version }} make
-          echo "PATH=/usr/local/opt/llvm/bin:$PATH" >> $GITHUB_ENV
+          echo "PATH=/usr/local/opt/llvm@${{ matrix.config.compiler_version }}/bin:/usr/local/opt/llvm/bin:$PATH" >> $GITHUB_ENV
       - name: 'compile'
         run: |
           ${{ matrix.config.make }} -C test -f zpp.mk -j mode=${{ matrix.config.mode }} ZPP_BITS_AUTODETECT_MEMBERS_MODE=${{ matrix.config.test_autodetect_members }}
