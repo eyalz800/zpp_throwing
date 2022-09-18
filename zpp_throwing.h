@@ -294,7 +294,7 @@ inline constexpr auto err_domain<throwing_exception> = make_error_domain(
 struct rethrow_t
 {
 };
-constexpr rethrow_t rethrow;
+constexpr inline rethrow_t rethrow;
 
 /**
  * Return void for void returning coroutines.
@@ -302,7 +302,7 @@ constexpr rethrow_t rethrow;
 struct void_t
 {
 };
-constexpr void_t void_v;
+constexpr inline void_t void_v;
 
 struct dynamic_object
 {
