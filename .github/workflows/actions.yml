@@ -21,14 +21,14 @@ jobs:
             make: make
             mode: release
             os: ubuntu
-            vm_image: ubuntu-18.04
+            vm_image: ubuntu-20.04
           - name: Clang 13 Ubuntu
             compiler: clang
             compiler_version: 13
             make: make
             mode: release
             os: ubuntu
-            vm_image: ubuntu-18.04
+            vm_image: ubuntu-20.04
           - name: Clang 12 Ubuntu
             compiler: clang
             compiler_version: 12
@@ -43,20 +43,6 @@ jobs:
             mode: release
             os: ubuntu
             vm_image: ubuntu-20.04
-          - name: Clang 12 MacOS
-            compiler: clang
-            compiler_version: 12
-            make: gmake
-            mode: release
-            os: macos
-            vm_image: macos-10.15
-          - name: Clang 13 MacOS
-            compiler: clang
-            compiler_version: 13
-            make: gmake
-            mode: release
-            os: macos
-            vm_image: macos-10.15
           - name: Clang 12 MacOS
             compiler: clang
             compiler_version: 12

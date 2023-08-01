@@ -8,16 +8,6 @@ strategy:
       OPERATING_SYSTEM: 'linux'
       CLANG_VERSION: '12'
       ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
-    ubuntu-22.04:
-      VM_IMAGE: 'ubuntu-22.04'
-      OPERATING_SYSTEM: 'linux'
-      CLANG_VERSION: '12'
-      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
-    macOS-10.15:
-      VM_IMAGE: 'macOS-10.15'
-      OPERATING_SYSTEM: 'mac-os'
-      CLANG_VERSION: '12'
-      ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
     macOS-11:
       VM_IMAGE: 'macOS-11'
       OPERATING_SYSTEM: 'mac-os'
