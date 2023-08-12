@@ -1421,7 +1421,42 @@ private:
     template <typename Clause,
               typename... Clauses,
               typename...,
-              typename CatchType = detail::catch_value_type_t<Clause>>
+              typename CatchType = detail::catch_value_type_t<Clause>,
+              bool IsThrowing = requires
+    {
+        typename std::invoke_result_t<Clause>::zpp_throwing_tag;
+    }
+    || requires
+    {
+        typename std::invoke_result_t<
+            Clause,
+            std::conditional_t<std::is_void_v<CatchType>,
+                               int,
+                               CatchType> &>::zpp_throwing_tag;
+    }
+    >
+    requires (!(IsThrowing ||
+        (... ||
+         (
+             requires {
+                 typename std::invoke_result_t<Clauses>::zpp_throwing_tag;
+             } ||
+             requires {
+                 typename std::invoke_result_t<
+                     Clauses,
+                     std::conditional_t<
+                         std::is_void_v<
+                             detail::catch_value_type_t<Clauses>>,
+                         int,
+                         detail::catch_value_type_t<Clauses>> &>::
+                     zpp_throwing_tag;
+             })) ||
+        (!requires {
+            typename std::invoke_result_t<
+                decltype(std::get<sizeof...(Clauses)>(
+                    std::declval<std::tuple<Clause, Clauses...>>()))>;
+
+        })))
     constexpr Type catch_exception_object(const dynamic_object & exception,
                                           Clause && clause,
                                           Clauses &&... clauses)
