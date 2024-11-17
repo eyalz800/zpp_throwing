@@ -775,8 +775,7 @@ struct exit_condition
             {
             }
 
-            auto dynamic_object() noexcept
-                -> struct dynamic_object override
+            struct dynamic_object dynamic_object() noexcept override
             {
                 // Return the type id of the exception object and its
                 // address.
