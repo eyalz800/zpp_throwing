@@ -1233,7 +1233,6 @@ private:
      */
     template <typename Clause,
               typename... Clauses,
-              typename...,
               typename CatchType = detail::catch_value_type_t<Clause>,
               bool IsThrowing = requires
     {
@@ -1420,7 +1419,6 @@ private:
      */
     template <typename Clause,
               typename... Clauses,
-              typename...,
               typename CatchType = detail::catch_value_type_t<Clause>,
               bool IsThrowing = requires
     {
