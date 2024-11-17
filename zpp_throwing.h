@@ -1818,8 +1818,6 @@ inline constexpr auto err_domain<std::errc> = zpp::make_error_domain(
             return "Protocol not available";
         case std::errc::no_space_on_device:
             return "No space left on device";
-        case std::errc::no_stream_resources:
-            return "Out of streams resources";
         case std::errc::no_such_device_or_address:
             return "No such device or address";
         case std::errc::no_such_device:
@@ -1832,8 +1830,6 @@ inline constexpr auto err_domain<std::errc> = zpp::make_error_domain(
             return "Not a directory";
         case std::errc::not_a_socket:
             return "Socket operation on non-socket";
-        case std::errc::not_a_stream:
-            return "Device not a stream";
         case std::errc::not_connected:
             return "Transport endpoint is not connected";
         case std::errc::not_enough_memory:
@@ -1872,8 +1868,6 @@ inline constexpr auto err_domain<std::errc> = zpp::make_error_domain(
             return "Numerical result out of range";
         case std::errc::state_not_recoverable:
             return "State not recoverable";
-        case std::errc::stream_timeout:
-            return "Timer expired";
         case std::errc::text_file_busy:
             return "Text file busy";
         case std::errc::timed_out:
