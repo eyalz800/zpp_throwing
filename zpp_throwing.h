@@ -4,6 +4,7 @@
 #include <cstring>
 #include <memory>
 #include <new>
+#include <exception>
 #include <stdexcept>
 #include <string_view>
 #include <system_error>
