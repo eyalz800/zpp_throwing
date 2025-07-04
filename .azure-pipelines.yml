@@ -3,16 +3,20 @@ trigger:
 
 strategy:
   matrix:
-    ubuntu-20.04:
-      VM_IMAGE: 'ubuntu-20.04'
+    ubuntu-22.04-clang:
+      VM_IMAGE: 'ubuntu-22.04'
       OPERATING_SYSTEM: 'linux'
-      CLANG_VERSION: '12'
+      COMPILER: 'clang'
+      CLANG_VERSION: '13'
       ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
-    macOS-11:
-      VM_IMAGE: 'macOS-11'
+      TEST_AUTODETECT: 1
+    macOS-15:
+      VM_IMAGE: 'macOS-15'
       OPERATING_SYSTEM: 'mac-os'
-      CLANG_VERSION: '12'
+      COMPILER: 'clang'
+      CLANG_VERSION: '17'
       ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
+      TEST_AUTODETECT: 1
 
 pool:
   vmImage: $(VM_IMAGE)
