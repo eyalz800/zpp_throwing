@@ -15,48 +15,27 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - name: Clang 12 Ubuntu
+          - name: Clang 17 Ubuntu
             compiler: clang
-            compiler_version: 12
+            compiler_version: 17
             make: make
             mode: release
             os: ubuntu
-            vm_image: ubuntu-20.04
-          - name: Clang 13 Ubuntu
+            vm_image: ubuntu-24.04
+          - name: Clang 17 MacOS
             compiler: clang
-            compiler_version: 13
-            make: make
-            mode: release
-            os: ubuntu
-            vm_image: ubuntu-20.04
-          - name: Clang 12 Ubuntu
-            compiler: clang
-            compiler_version: 12
-            make: make
-            mode: release
-            os: ubuntu
-            vm_image: ubuntu-20.04
-          - name: Clang 13 Ubuntu
-            compiler: clang
-            compiler_version: 13
-            make: make
-            mode: release
-            os: ubuntu
-            vm_image: ubuntu-20.04
-          - name: Clang 12 MacOS
-            compiler: clang
-            compiler_version: 12
+            compiler_version: 17
             make: gmake
             mode: release
             os: macos
-            vm_image: macos-11
-          - name: Clang 13 MacOS
+            vm_image: macos-15
+          - name: Clang 18 MacOS
             compiler: clang
-            compiler_version: 13
+            compiler_version: 18
             make: gmake
             mode: release
             os: macos
-            vm_image: macos-11
+            vm_image: macos-15
     env:
       DEBIAN_FRONTEND: noninteractive
       ASAN_OPTIONS: 'alloc_dealloc_mismatch=0'
